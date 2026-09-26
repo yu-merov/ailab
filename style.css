@@ -1,4 +1,4 @@
-/* AiLab · Етап 2 (Табло) + Етап 1 — визуалният език на макет v2: мента = Амур, светло синьо = Скай, сиво = GM;
+/* AiLab · Етап 3 (Снимки) + Етап 2 (Табло) + Етап 1 — визуалният език на макет v2: мента = Амур, светло синьо = Скай, сиво = GM;
    кехлибарено = непроверено/застаряло, виолетово = твое, червено = внимание (рядко). */
 :root{
   --ground:#EEF1EC; --surface:#FFFFFF; --surface2:#F5F7F3; --line:#D9DED6; --line2:#BFC7BC;
@@ -458,6 +458,7 @@ button.demo-pill::after{content:"";position:absolute;inset:-14px -8px}
 .hc-w .up{color:var(--ok);font-weight:700} .hc-w .dn{color:var(--warn-ink);font-weight:700}
 
 /* „Какво се промени“ — поток като във Фейсбук */
+.fd-g{display:contents}   /* групата на една дата — само за прерисуването по части; подредбата остава в мрежата на #tb-feed */
 .fd-day{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-family:var(--f-disp);font-weight:600;font-size:14.5px;margin-top:6px}
 .fd{background:var(--surface);border:1px solid var(--line);border-left:5px solid var(--o);border-radius:16px;box-shadow:var(--sh-soft);overflow:hidden}
 .fd-h{display:flex;gap:10px;align-items:center;padding:12px 14px 4px 12px}
@@ -505,3 +506,61 @@ button.ochip::after{content:"";position:absolute;inset:-10px -4px}
 .dc .ref,.fd .ref{font-size:12px}
 .tb-cnt .stat em{color:var(--muted)}
 .tb-cnt .stat.k-mine em{color:var(--mine)}
+
+/* ================= Етап 3: снимки ================= */
+/* Ден: „📷 Снимки (N)“ — мрежа 4 колони, квадратни плочки; същите плочки в „Източници“ и в лентите на Таблото. Само токени. */
+.phs{display:grid;gap:10px;--c:var(--o);scroll-margin-top:84px}
+.phs:empty{display:none}
+#ph{content-visibility:auto;contain-intrinsic-size:auto 80px}
+.ph-g{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+.ph-t{position:relative;display:block;width:100%;aspect-ratio:1;min-width:0;padding:0;margin:0;border:none;border-radius:10px;overflow:hidden;background:var(--surface2);cursor:pointer;color:var(--muted);-webkit-touch-callout:none}
+.ph-t img{display:block;width:100%;height:100%;object-fit:cover}
+.ph-t img:not([src]){visibility:hidden}
+.ph-t:active{opacity:.8}
+.ph-t:focus-visible{outline:3px solid var(--brand);outline-offset:1px}
+/* часът — на първата плочка от всяко съобщение */
+.ph-h{position:absolute;left:4px;bottom:4px;font:600 11px/1.35 var(--f-mono);color:#fff;background:rgba(0,0,0,.58);border-radius:6px;padding:0 5px;pointer-events:none}
+/* сива плочка: без покритие и без запазена, липсващ файл, грешка */
+.ph-x img{visibility:hidden}
+.ph-x::after{content:"📷";position:absolute;inset:0;display:grid;place-items:center;font-size:20px;opacity:.5}
+.ph-more{width:100%}
+.ph-err{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:13.5px;font-weight:600;color:var(--warn-ink)}
+/* „📷 N ›“ в горния ред на резюмето */
+.sum-hr{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end;margin-left:auto}
+.sum-ph{position:relative;min-height:28px;border:none;border-radius:999px;padding:0 10px;background:var(--o-bg);color:var(--o-ink);font:inherit;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap}
+.sum-ph::after{content:"";position:absolute;inset:-10px -4px}
+/* лист „Източници“: до 6 плочки по 56 px + „+N“ под източника */
+.src-ph{display:flex;flex-wrap:wrap;gap:4px;margin:-6px 0 0 44px}
+.src-ph:empty{display:none}
+.ph-s{width:56px;height:56px;flex:none;border-radius:8px}
+.ph-pl{display:grid;place-items:center;background:var(--o-bg);color:var(--o-ink);font-weight:700;font-size:15px}
+.src-phl{margin:0;display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+/* Табло: лента под датата — постоянна височина 64 px (картинките идват след подписа, нищо не се мести) */
+.fd-ph{display:flex;gap:4px;height:64px;padding-left:6px;border-left:4px solid var(--o);content-visibility:auto;contain-intrinsic-size:auto 64px}
+.fd-pt{flex:0 1 64px;width:auto;height:64px;aspect-ratio:auto}
+.fd-pm{flex:0 1 64px;min-width:0;height:64px;border:none;border-radius:10px;background:var(--o-bg);color:var(--o-ink);font-family:var(--f-disp);font-weight:600;font-size:16px;cursor:pointer}
+.fd-pm:active{opacity:.8}
+
+/* Преглед на цял екран — черен и в двете теми; над листа (40), лентата (25) и „+“ (20), под тостовете (60) [К27] */
+.pv{position:fixed;inset:0;z-index:50;background:#000;color:#fff;display:flex;flex-direction:column;touch-action:pan-x;overscroll-behavior:contain;-webkit-user-select:none;user-select:none;animation:fadeIn .15s ease-out}
+.pv-top{flex:none;display:flex;align-items:center;gap:10px;min-height:56px;padding:calc(6px + env(safe-area-inset-top,0px)) max(8px,env(safe-area-inset-right,0px)) 6px max(16px,env(safe-area-inset-left,0px))}
+.pv-n{font-family:var(--f-ui);font-weight:600;font-size:16px;color:#fff;font-variant-numeric:tabular-nums;white-space:nowrap}
+.pv-ctx{flex:1;min-width:0;font-size:13px;color:rgba(255,255,255,.72);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pv-cl{flex:none;width:44px;height:44px;border:none;border-radius:50%;background:rgba(255,255,255,.16);color:#fff;font-size:26px;line-height:1;cursor:pointer}
+.pv-tr{flex:1;min-height:0;display:flex;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.pv-tr::-webkit-scrollbar{display:none}
+.pv-s{flex:0 0 100%;min-width:0;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden;scroll-snap-align:center;scroll-snap-stop:always}
+.pv-s img{display:block;width:100%;height:100%}
+.pv-s img:not([src]){visibility:hidden}
+.pv-s.pv-none::after{content:"📷";position:absolute;inset:0;display:grid;place-items:center;font-size:44px;opacity:.45}
+.pv-off{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);max-width:calc(100% - 24px);background:rgba(0,0,0,.72);color:#fff;border-radius:999px;padding:6px 14px;font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pv-bot{flex:none;display:grid;gap:8px;padding:8px max(12px,env(safe-area-inset-right,0px)) calc(10px + env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px))}
+.pv-cap{min-height:20px;font-size:13.5px;line-height:1.35;color:rgba(255,255,255,.88);text-align:center;overflow-wrap:anywhere}
+.pv-cap .pulse{background:#fff}
+.pv-op{margin-top:2px;color:#fff}
+.pv-b{display:grid;grid-template-columns:52px 1fr 52px auto;gap:8px;align-items:center}
+.pv-b button{min-height:48px;border:none;border-radius:12px;background:rgba(255,255,255,.16);color:#fff;font:inherit;font-size:16px;font-weight:600;cursor:pointer}
+.pv-b button[data-a="pvPrev"],.pv-b button[data-a="pvNext"]{font-size:28px;line-height:1}
+.pv-b button:disabled{opacity:.3;cursor:default}
+.pv-full{min-height:48px;display:inline-flex;align-items:center;padding:0 6px;color:#fff;font-size:14px;font-weight:600;text-decoration:none;white-space:nowrap}
+.pv :focus-visible{outline:2px solid #fff;outline-offset:2px}

@@ -1,4 +1,5 @@
-// AiLab · Етап 2 — начален екран „Табло“ (броячи, решения, хора по дни, поток на промените) + „Ден“ от Етап 1 + „Действия“.
+// AiLab · Етап 3 — „Снимки“ (Ден, Източници, Табло, преглед на цял екран) върху Етап 2: начален екран „Табло“ (броячи, решения,
+// хора по дни, поток на промените) + „Ден“ от Етап 1 + „Действия“.
 // Пази входа, запазеното и service worker-а от Етап 0. ?demo=1 → вградени примерни данни без вход (нищо не отива в облака).
 // Правило: всеки текст от базата/потребителя минава през esc(), преди да влезе в HTML.
 (function () {
@@ -168,6 +169,19 @@
     tFeed: function (ids) {
       if (!ids.length) return Promise.resolve([]);
       return R(function () { return db.from('tochki').select(FEED_COLS).eq('grupa', 'promqna').in('den_id', ids).order('vajnost', { ascending: false }).order('red').order('id').limit(150).abortSignal(tsig()); });
+    },
+    // ---- Снимки (Етап 3): само SELECT; без таблицата/функцията → тихо без снимки ----
+    // С1: всички снимки на деня (паралелно с den/tochki/res, не ги чака)
+    snimki: function (id) { return R(function () { return db.from('snimki').select(PH_COLS).eq('den_id', id).order('vreme').order('n').order('id').limit(500).abortSignal(tsig()); }); },
+    // С2: снимките на съобщенията от източниците на една точка — по индекса snimki_den (ден + ид) [К9]
+    snimkiMsg: function (denId, ids) {
+      if (!ids.length) return Promise.resolve([]);
+      return R(function () { return db.from('snimki').select(PH_COLS).eq('den_id', denId).in('msg_id', ids).order('vreme').order('n').limit(200).abortSignal(tsig()); });
+    },
+    // С3: до 4 миниатюри на ден + общ брой, с една заявка (порция от потока на Таблото)
+    tPh: function (ids) {
+      if (!ids.length) return Promise.resolve([]);
+      return R(function () { return db.rpc('snimki_tablo', { ids: ids, na_den: 4 }).abortSignal(tsig()); });
     }
   };
 
@@ -285,17 +299,31 @@
     if (c.obekt !== OBEKT_KOD) c = { obekt: OBEKT_KOD, days: {} };
     c.at = nowIso(); c.dni = S.dni; c.counts = S.counts; c.svezhest = S.svezhest; c.deistviq = S.deistviq.filter(function (a) { return typeof a.id === 'number'; });
     c.last = S.den ? S.den.id : null; c.days = c.days || {};
-    if (S.den) c.days[S.den.id] = { den: S.den, tochki: S.tochki, res: S.res, t: Date.now() };
+    if (S.den) {
+      // снимките на деня — само пътищата и данните (без подписани адреси), до 120 реда; С1 още не е дошла → старите остават
+      var prev = c.days[S.den.id], ph = PH.den === S.den.id && PH.list ? phRows(PH.list) : (prev && prev.snimki) || null;
+      c.days[S.den.id] = { den: S.den, tochki: S.tochki, res: S.res, t: Date.now() };
+      if (ph) c.days[S.den.id].snimki = ph;
+    }
     Object.keys(c.days).sort(function (a, b) { return c.days[b].t - c.days[a].t; }).slice(6).forEach(function (k) { delete c.days[k]; });
-    sset(dayKey(), c);
+    phSetCache(c);
     S.dataAt = c.at;
+  }
+  // Квота на телефона [К31]: при препълване — нов опит без снимките във всички дни, после както досега.
+  function phSetCache(c) {
+    if (ssetOk(dayKey(), c)) return;
+    Object.keys(c.days || {}).forEach(function (k) { delete c.days[k].snimki; });
+    sset(dayKey(), c);
   }
   function fromCache(id) {
     var c = sget(dayKey(), null); if (!c || c.obekt !== OBEKT_KOD) return false;
     S.dni = c.dni || []; S.counts = c.counts || {}; S.svezhest = c.svezhest || []; S.deistviq = c.deistviq || []; S.dataAt = c.at || '';
     var days = c.days || {}, day = days[id || c.last];
     if (!day) { var k = Object.keys(days)[0]; day = k ? days[k] : null; }
-    if (day) { var same = S.den && S.den.id === day.den.id; S.den = day.den; S.tochki = day.tochki || []; S.res = day.res || []; if (!same) { S.openedAt = activeMs(); S.newVersiq = 0; } }
+    if (day) {
+      var same = S.den && S.den.id === day.den.id; S.den = day.den; S.tochki = day.tochki || []; S.res = day.res || []; if (!same) { S.openedAt = activeMs(); S.newVersiq = 0; }
+      if (PH.den !== day.den.id) phPick(day.den.id, Array.isArray(day.snimki) ? day.snimki : null);   // снимките — от кеша, веднага
+    }
     else { S.den = null; S.tochki = []; S.res = []; }
     return true;
   }
@@ -350,6 +378,7 @@
   // explicit = РП натисна „Презареди“. Иначе нова версия на СЪЩИЯ ден не подменя показаното (напр. след връзка
   // отново) — остава лентата „Има нова версия“, за да не се одобри неусетно друго от прегледаното.
   function loadDen(id, tok, explicit) {
+    phLoad(id);   // С1 — успоредно, не се чака (и при нова версия / презареждане) [§4.1]
     return Promise.all([api.den(id), api.tochki(id), api.res(id)]).then(function (rr) {
       if (tok != null && tok !== S.tok) return;
       if (!rr[0]) throw { message: 'Този ден вече го няма в базата.', code: 'GONE' };
@@ -542,9 +571,10 @@
         esc(OBEKT[OBEKT_KOD][0]) + ' <span aria-hidden="true">⇄</span></button><span class="small muted">' + esc(monthLbl()) + '</span></div>' +
       '<div class="strip" id="strip" role="tablist" aria-label="Дни"></div>' +
       '<div class="legend" aria-hidden="true"><span><i class="lg-ch"></i>чернова</span><span><i class="lg-od"></i>одобрен · чака лаптопа</span><span><i class="lg-vp"></i>вписан</span></div></section>' +
-      '<div id="fresh"></div><section id="sum"></section><div id="groups" class="groups"></div><section id="full"></section>' +
+      '<div id="fresh"></div><section id="sum"></section><div id="groups" class="groups"></div>' +
+      '<section id="ph" class="phs" aria-label="Снимки"></section><section id="full"></section>' +
       '<div id="appr"></div><section id="acts" class="actsec"></section>' + footer();
-    renderStrip(); renderFresh(); renderSum(); renderGroups(); renderFull(); renderAppr(); renderActs(); renderBanners();
+    renderStrip(); renderFresh(); renderSum(); renderGroups(); renderPh(); renderFull(); renderAppr(); renderActs(); renderBanners();
     var st = $('#strip'), sel = $('.sd.sel');
     if (st && sel) st.scrollLeft = Math.max(0, sel.offsetLeft - (st.clientWidth - sel.offsetWidth) / 2);
     if (S.flash && S.den && S.flash.den === S.den.id) setTimeout(flashPoint, 80);   // от Таблото: точката светва
@@ -563,6 +593,7 @@
     if (!S.den) { if (S.dni.length) renderDay(); else { renderFresh(); renderActs(); renderBanners(); } return; }
     renderStrip(); renderFresh(); renderAppr(); renderActs(); renderBanners();
     var sig = sigOf(); if (sig !== S.sig) { renderSum(); renderGroups(); }
+    keepY(['#ph'], renderPh);   // снимките не са в sigOf(): box() пише само при промяна (напр. покритие ⇄ без покритие)
   }
   function sigOf() {
     return JSON.stringify([S.tochki.map(function (t) { return t.istina; }), S.res.map(function (r) { return [r.id, r.rezultat]; }),
@@ -639,10 +670,12 @@
     var el = box('#sum'); if (!el) return;
     var d = S.den;
     if (!d) { el.className = ''; el.innerHTML = '<div class="card pad">Този ден не е запазен на телефона. Отвори го, когато има покритие.</div>'; return; }
-    var g = groupsOf(), p = stPill();
+    var g = groupsOf(), p = stPill(), phl = phCur(), phn = phl ? phl.length : 0;
     el.className = 'sum';
     el.innerHTML =
-      '<div class="sum-h"><span class="small muted">Чернова от ' + esc(rel(d.obnoven)) + '</span><span class="pill ' + p[1] + '">' + esc(p[0]) + ' · v' + esc(d.versiq) + '</span></div>' +
+      '<div class="sum-h"><span class="small muted">Чернова от ' + esc(rel(d.obnoven)) + '</span><span class="sum-hr">' +
+        (phn ? '<button type="button" class="sum-ph" data-a="phJump" aria-label="' + esc('Снимки: ' + phn + ' — към секцията') + '">📷 ' + phn + ' ›</button>' : '') +
+        '<span class="pill ' + p[1] + '">' + esc(p[0]) + ' · v' + esc(d.versiq) + '</span></span></div>' +
       '<h1 class="sum-d">' + esc(dayTitle(d.data)) + '</h1>' +
       '<div class="sum-main"><div class="hora"><span class="hora-n">' + (d.hora == null ? '—' : esc(d.hora)) + '</span><span class="hora-l">👷 души<br>на обекта</span></div>' +
       '<p class="rez">' + esc(d.rezyume || 'Няма резюме.') + '</p></div>' +
@@ -893,12 +926,15 @@
       (s.vreme ? ' · <span class="mono">' + esc(s.vreme) + '</span>' : '') + '</div><div>' + esc(s.kratko || '') + '</div>' +
       (s.kade ? '<div class="src-k mono">' + esc(s.kade) + '</div>' : '') + '</div></div>';
   }
+  var SRC_NOTE = '<p class="small muted">Оригиналите са в OneDrive, в папката на деня. На телефона — описанието и намалени снимки.</p>';
+  // източник от Тиймс → под него ред със снимките на съобщението (празният ред изчезва) [§4.5]
+  function srcWithPh(s) { var m = srcMsg(s); return srcItem(s) + (m ? '<div class="src-ph" data-msg="' + esc(m) + '"></div>' : ''); }
   function openSrc(tid) {
     var t = findT(tid); if (!t) return;
-    openSheet('Източници (' + t.izvori.length + ')', '<p class="sh-q">' + esc(clip(t.tekst, 220)) + '</p>' + t.izvori.map(srcItem).join('') +
-      '<p class="small muted">Оригиналите са в OneDrive, в папката на деня. На телефона се вижда описанието.</p>');
+    openSheet('Източници (' + t.izvori.length + ')', '<p class="sh-q">' + esc(clip(t.tekst, 220)) + '</p>' + t.izvori.map(srcWithPh).join('') + SRC_NOTE);
+    srcPhStart(t.den_id, t.izvori);
   }
-  function openRef(n) { var s = refMap()[n]; if (s) openSheet('Източник [' + n + ']', srcItem(s)); }
+  function openRef(n) { var s = refMap()[n]; if (!s) return; openSheet('Източник [' + n + ']', srcWithPh(s)); srcPhStart(S.den ? S.den.id : null, [s]); }
   function openFresh() {
     var list = sortSv(S.svezhest);
     openSheet('Свежест на източниците', (list.length ? list.map(function (s) {
@@ -1112,7 +1148,8 @@
   }
   function closeSheet() {
     if (!sheetEl) return;
-    sheetEl.remove(); sheetEl = null; sheetKind = ''; document.body.classList.remove('noscroll');
+    sheetEl.remove(); sheetEl = null; sheetKind = ''; SP = null;
+    if (!PV) document.body.classList.remove('noscroll');   // прегледът и листът се пазят взаимно [К28]
     if (sheetPrev && document.contains(sheetPrev) && sheetPrev.focus) { try { sheetPrev.focus({ preventScroll: true }); } catch (e) {} }
     sheetPrev = null;
   }
@@ -1131,6 +1168,526 @@
     var y = el.getBoundingClientRect().top + (window.pageYOffset || document.documentElement.scrollTop) - off;
     var calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     window.scrollTo({ top: Math.max(0, y), behavior: calm ? 'auto' : 'smooth' });
+  }
+
+  // ---------- снимки (Етап 3) ----------
+  // Намалените копия (голяма + миниатюра, без EXIF) са в частната кофа „snimki“; телефонът само чете, с подписани адреси
+  // (1 ч, само в паметта). В localStorage и в кеша на Ден/Табло стоят само пътищата. Без таблицата snimki (преди
+  // 004_etap3.sql) или без функцията snimki_tablo — тихо: „няма качени снимки“ в Ден, Таблото е без ленти.
+  var PH_COLS = 'id,den_id,obekt,data,msg_id,izvor_vid,izvor,avtor,vreme,n,pat,pat_mini,shirina,visochina,opisanie';
+  var PH_KEEP = PH_COLS.split(',').filter(function (k) { return k !== 'opisanie'; });   // кешът на Ден — без описанието
+  var PH_TB = 'id,msg_id,vreme,n,pat_mini,shirina,visochina'.split(',');                 // лентите на Таблото (и кешът им)
+  var PH_PORC = 24, PH_C1_MS = 120000;
+  var PH = { tok: 0, den: null, list: null, at: 0, err: null, net: false, shown: PH_PORC };   // снимките на отворения Ден
+  var PHM = {}, PHM_K = [];                  // списъци по ден за прегледа от Таблото (само в паметта, до 12 дни)
+  var SG = { m: {}, pend: {}, failAt: {}, bad: {}, offBad: {}, retried: {} };   // подписани адреси: pat → {u, exp}
+  var SGQ = { set: {}, t: 0 };
+  var DEMO_SEEN = {};                        // демо „без покритие“: показаните картинки остават [§4.9]
+  var SP = null, spTok = 0;                  // снимките в листа „Източници“
+  var PV = null, pvTok = 0;                  // прегледът на цял екран
+
+  // ид на съобщението от източник на точка (само Тиймс; мейлите и Файлове/… — не)
+  function srcMsg(s) { var m = s && s.kade ? /Оригинали[\/\\]\d{6}_(\d{10,})_/.exec(String(s.kade)) : null; return m ? m[1] : null; }
+  function normPh(r) { r.shirina = +r.shirina || 0; r.visochina = +r.visochina || 0; r.n = +r.n || 1; if (r.msg_id != null) r.msg_id = String(r.msg_id); return r; }
+  function phRows(list) { return (list || []).slice(0, 120).map(function (r) { var o = {}; PH_KEEP.forEach(function (k) { o[k] = r[k]; }); return o; }); }
+  function phSort(a, b) { return (a.vreme < b.vreme ? -1 : a.vreme > b.vreme ? 1 : 0) || a.n - b.n || a.id - b.id; }
+  function phCur() { return S.den && PH.den === S.den.id ? PH.list : null; }
+  function phListFor(den) { return PH.den === den && PH.list ? PH.list : (PHM[den] || null); }
+  function phMem(den, list) { if (!PHM[den]) { PHM_K.push(den); if (PHM_K.length > 12) delete PHM[PHM_K.shift()]; } PHM[den] = list; }
+  function phIdx(list, sid) { for (var i = 0; i < list.length; i++) if (list[i].id === sid) return i; return 0; }
+  function phTime(r) { var d = new Date(r && r.vreme); return isNaN(d) ? '' : hhmm(d); }
+  function phLbl(i, n, r) { return 'Снимка ' + (i + 1) + ' от ' + n + [phTime(r), r.avtor].filter(Boolean).map(function (x) { return ' · ' + x; }).join(''); }
+  function dayCtx(d) { d = d || S.den; return d ? lcDay(d.data) + ' · ' + (OBEKT[d.obekt || OBEKT_KOD] || OBEKT.ag)[0] : ''; }
+  // размерите на картинката при дълга страна L (без уголемяване) — за width/height, за да няма скачане
+  function phDims(r, L) { var w = +r.shirina || 4, h = +r.visochina || 3, k = Math.min(1, L / Math.max(w, h)); return [Math.max(1, Math.round(w * k)), Math.max(1, Math.round(h * k))]; }
+  function phMissing(e) { return isMissing(e) || !!(e && e.code === 'PGRST202'); }
+
+  // --- подписани адреси (обща част) ---
+  function sgOk(p, ms) { var x = SG.m[p]; return !!(x && x.exp - Date.now() > (ms == null ? 3e5 : ms)); }
+  // Без покритие: миниатюрата от кеша на sw.js (ключът е адресът без ?token) [§4.3]
+  function offUrl(pat) { return String(CFG.url || '').replace(/\/+$/, '') + '/storage/v1/object/sign/snimki/' + pat + '?token=off'; }
+  // Адресът за <img> — само от паметта; нищо не се кърпи в DOM след box() [К23]:
+  // низ = адрес · '' = още без адрес (сив фон; подписва се и се рисува пак) · null = сива плочка с 📷
+  function srcFor(pat) {
+    if (!pat) return null;
+    if (DEMO) return offNow() && !DEMO_SEEN[pat] ? null : demoUrl(pat);
+    if (SG.bad[pat]) return null;
+    if (sgOk(pat)) return SG.m[pat].u;
+    var fa = SG.failAt[pat];
+    if (offNow() || (fa && Date.now() - fa < 60000) || !db || !user) return SG.offBad[pat] || !/\/mini\//.test(pat) ? null : offUrl(pat);
+    sgNeed(pat);
+    return '';
+  }
+  function sgNeed(pat) {
+    if (SG.pend[pat] || SGQ.set[pat]) return;
+    SGQ.set[pat] = 1;
+    if (!SGQ.t) SGQ.t = setTimeout(sgFlush, 0);
+  }
+  function sgFlush() {
+    var ps = Object.keys(SGQ.set); SGQ.set = {}; SGQ.t = 0;
+    if (ps.length) sign(ps).then(phRepaint, phRepaint);
+  }
+  // createSignedUrls не приема abortSignal → таван 12 с [К25]
+  function race12(p) {
+    return new Promise(function (ok, no) {
+      var t = setTimeout(function () { no({ message: 'timeout: подписът не дойде за 12 с', code: '' }); }, 12000);
+      Promise.resolve(p).then(function (v) { clearTimeout(t); ok(v); }, function (e) { clearTimeout(t); no(e); });
+    });
+  }
+  // sign(paths) → {pat: адрес}: без повторения; от паметта, ако остават > 5 мин; останалите на порции ≤ 50 (С4)
+  function sign(paths) {
+    var t0 = Date.now(), out = {}, need = [], seen = {};
+    (paths || []).forEach(function (p) {
+      if (!p || seen[p]) return; seen[p] = 1;
+      if (sgOk(p)) out[p] = SG.m[p].u; else need.push(p);
+    });
+    if (!need.length) return Promise.resolve(out);
+    if (DEMO) { need.forEach(function (p) { var u = demoUrl(p); if (u) out[p] = u; }); return Promise.resolve(out); }
+    if (!db || !user) { need.forEach(function (p) { SG.failAt[p] = t0; }); return Promise.reject({ message: 'Няма връзка с облака', code: '' }); }
+    need.forEach(function (p) { SG.pend[p] = 1; });
+    var parts = [];
+    for (var i = 0; i < need.length; i += 50) parts.push(need.slice(i, i + 50));
+    return Promise.all(parts.map(function (ch) {
+      var q;
+      try { q = db.storage.from('snimki').createSignedUrls(ch, 3600); } catch (e) { q = Promise.reject(e); }
+      return race12(q).then(function (r) {
+        if (!r || r.error) throw (r && r.error) || { message: 'подписът не дойде', code: '' };
+        var got = {};
+        (r.data || []).forEach(function (d, j) {
+          var p = d && (d.path || ch[j]); if (!p) return;
+          got[p] = 1;
+          if (d.error || !d.signedUrl) { SG.bad[p] = 1; return; }   // напр. липсващ файл → сива плочка само за него [К25]
+          SG.m[p] = { u: d.signedUrl, exp: t0 + 3600e3 }; out[p] = d.signedUrl;
+          delete SG.failAt[p]; delete SG.offBad[p];
+        });
+        ch.forEach(function (p) { delete SG.pend[p]; if (!got[p]) SG.bad[p] = 1; });
+      }, function (e) {
+        ch.forEach(function (p) { delete SG.pend[p]; SG.failAt[p] = Date.now(); });
+        throw e;
+      });
+    })).then(function () { return out; });
+  }
+  // Картинка с грешка: без покритие → сива; изтекъл адрес → еднократно ново подписване; втори неуспех → сива [§4.2]
+  // Без покритие се забравя и адресът: иначе при върнато покритие srcFor() дава СЪЩИЯ адрес, HTML-ът не се сменя,
+  // box() не пише и плочката остава сива до изтичането на подписа. Така: сива сега → нов подпис и нова <img> после.
+  function phImgErr(im) {
+    var pat = im.getAttribute('data-p'), src = im.getAttribute('src'), b = im.closest ? im.closest('.ph-t') : null;
+    if (!pat || !src) return;
+    if (b) b.classList.add('ph-x');
+    if (DEMO) return;
+    if (/[?&]token=off$/.test(src) || offNow()) { SG.offBad[pat] = 1; delete SG.m[pat]; return; }
+    if (!SG.retried[pat]) { SG.retried[pat] = 1; delete SG.m[pat]; sign([pat]).then(phRepaint, phRepaint); return; }
+    SG.bad[pat] = 1;
+  }
+  // След подпис / смяна на покритието: всичко, което показва снимки, се рисува наново (box() пише само разликата)
+  // Потокът — и при отложен TB.defer.feed: отложено е само feedReset(); renderFeed() рисува СЪЩИЯ поток, сменят се
+  // само адресите в лентите (64 px, нищо не се мести [К11]). Иначе новите порции остават със сиви ленти.
+  function phRepaint() {
+    if (view === 'day') keepY(['#ph'], renderPh);
+    else if (view === 'tablo' && TB.built) renderFeed();
+    srcPhFill();
+    if (PV) pvPaint();
+  }
+  // Без скачане под палеца: секция над видимото смени височината → екранът се мести със същото (като [К11] от Етап 2).
+  // #ph е с content-visibility:auto — извън екрана браузърът пази старата височина и би „скочил“ чак при връщане нагоре
+  // (Safari няма scroll anchoring) → за мерането секцията се рисува истински, после пак auto (помни новата височина).
+  function keepY(sels, fn) {
+    var b = sels.map(function (s) {
+      var n = $(s); if (!n) return null;
+      var r = n.getBoundingClientRect(); if (r.top >= 0) return null;
+      n.style.contentVisibility = 'visible';
+      return { n: n, h: r.height };
+    });
+    fn();
+    var dy = 0;
+    b.forEach(function (x) { if (x) dy += x.n.getBoundingClientRect().height - x.h; });
+    if (dy) window.scrollBy(0, dy);
+    b.forEach(function (x) { if (x) rafX(function () { rafX(function () { x.n.style.contentVisibility = ''; }); }); });
+  }
+  function phImg(pat, r, low) {
+    var u = srcFor(pat), d = phDims(r, 360);
+    return { x: u === null, h: '<img alt="" loading="lazy" decoding="async" crossorigin="anonymous"' + (low ? ' fetchpriority="low"' : '') +
+      ' width="' + d[0] + '" height="' + d[1] + '" data-p="' + esc(pat) + '"' + (u ? ' src="' + esc(u) + '"' : '') + '>' };
+  }
+
+  // --- Ден: С1 и секция „📷 Снимки“ ---
+  function phCached(id) {
+    var c = sget(dayKey(), null), d = c && c.obekt === OBEKT_KOD && c.days ? c.days[id] : null;
+    return d && Array.isArray(d.snimki) ? d.snimki.map(normPh) : null;
+  }
+  function phPick(id, list) { PH.den = id; PH.list = list || PHM[id] || null; PH.shown = PH_PORC; PH.err = null; PH.net = false; PH.tok++; }
+  // С1: при отваряне на деня, „обнови“, нова версия, връщане на покритието и след > 2 мин извън приложението [К30]
+  function phLoad(id) {
+    if (!id || !api) return;
+    if (PH.den !== id) phPick(id, phCached(id));
+    if (offNow()) { PH.net = true; return; }
+    var tok = ++PH.tok;
+    PH.at = Date.now();
+    api.snimki(id).then(function (rows) {
+      if (tok !== PH.tok || PH.den !== id) return;   // отговор за стар ден — изхвърля се
+      PH.list = (rows || []).map(normPh); PH.err = null; PH.net = false;
+      phMem(id, PH.list);
+      // отворен лист „Източници“ на този ден, напълнен от кеша на телефона, поема прясната С1
+      if (SP && +SP.den === +id) { SP.rows = phByMsg(PH.list, SP.msgs); SP.err = null; srcPhFill(); }
+      phSaveCache(id);
+      phSignDay();
+      phShow();
+    }, function (e) {
+      if (tok !== PH.tok || PH.den !== id) return;
+      if (phMissing(e)) { PH.list = []; PH.err = null; }   // таблицата още я няма → тихо „няма снимки“
+      else if (isNet(e) || isAuth(e)) PH.net = true;
+      else PH.err = e;
+      phShow();
+    });
+  }
+  function phShow() {
+    if (view !== 'day' || !S.den || S.den.id !== PH.den) return;
+    keepY(['#sum', '#ph'], function () { renderSum(); renderPh(); });
+  }
+  function phSaveCache(id) {
+    var c = sget(dayKey(), null); if (!c || c.obekt !== OBEKT_KOD || !c.days || !c.days[id]) return;   // денят още не е в кеша → saveCache() ще го вземе
+    c.days[id].snimki = phRows(PH.list);
+    phSetCache(c);
+  }
+  // Един подпис за миниатюрите на ЦЕЛИЯ ден (≤ 50 на порция) — „Още снимки“ не чака мрежа [К24]
+  function phSignDay() {
+    var l = phCur() || (PH.den ? PH.list : null);
+    if (DEMO || !l || !l.length || offNow()) return;
+    sign(l.map(function (r) { return r.pat_mini; })).then(phRepaint, phRepaint);
+  }
+  function renderPh() {
+    var el = box('#ph'); if (!el) return;
+    if (!S.den) { el.innerHTML = ''; return; }
+    if (PH.den !== S.den.id) phLoad(S.den.id);
+    var list = PH.list, h = '<div class="grp-h"><h2>📷 Снимки';
+    if (!list) {
+      h += '</h2></div>';
+      if (PH.err) h += '<div class="err">Снимките не се заредиха: ' + esc(errBg(PH.err)) + '</div><button type="button" class="btn ghost" data-a="phRetry">Опитай пак</button>';
+      else if (PH.net || offNow()) h += '<p class="grp-e">📴 Снимките — когато има покритие.</p>';
+      else h += '<p class="grp-e"><span class="pulse" aria-hidden="true"></span> зареждам…</p>';
+      el.innerHTML = h;
+      return;
+    }
+    if (!list.length) { el.innerHTML = '<p class="grp-e">📷 Няма качени снимки за този ден.</p>'; return; }
+    var n = list.length, msgs = {}, nm = 0, first = {}, show = Math.min(n, PH.shown), fail = false;
+    list.forEach(function (r) { if (!msgs[r.msg_id]) { msgs[r.msg_id] = 1; nm++; } });
+    h += ' (' + n + ')</h2></div><p class="grp-s">от Тиймс · ' + n + ' ' + pl(n, 'снимка', 'снимки') + ' в ' + nm + ' ' + pl(nm, 'съобщение', 'съобщения') + '</p><div class="ph-g">';
+    list.slice(0, show).forEach(function (r, i) {
+      var im = phImg(r.pat_mini, r), tm = phTime(r), fst = !first[r.msg_id];
+      first[r.msg_id] = 1;
+      if (!DEMO && SG.failAt[r.pat_mini] && !sgOk(r.pat_mini)) fail = true;
+      h += '<button type="button" class="ph-t' + (im.x ? ' ph-x' : '') + '" data-a="ph" data-i="' + i + '" aria-label="' + esc(phLbl(i, n, r)) + '">' + im.h +
+        (fst && tm ? '<span class="ph-h" aria-hidden="true">' + esc(tm) + '</span>' : '') + '</button>';   // часът — на първата плочка от всяко съобщение
+    });
+    h += '</div>';
+    if (show < n) {
+      var rest = n - show, add = Math.min(PH_PORC, rest);
+      h += '<button type="button" class="btn ghost ph-more" data-a="phMore">Още снимки (+' + add + (rest > add ? ' · остават ' + (rest - add) : '') + ') ▾</button>';
+    }
+    if (fail && !offNow()) h += '<div class="ph-err"><span>⚠️ Снимките не се заредиха докрай.</span><button type="button" class="btn ghost" data-a="phRetry">Опитай пак</button></div>';
+    el.innerHTML = h;
+  }
+  function phMore() { PH.shown += PH_PORC; renderPh(); }   // адресите са подписани при отваряне на деня → без заявка
+  function phRetry() {
+    if (!S.den) return;
+    if (!PH.list || PH.err || PH.den !== S.den.id) { PH.err = null; PH.net = false; phLoad(S.den.id); renderPh(); return; }
+    PH.list.forEach(function (r) { delete SG.failAt[r.pat_mini]; delete SG.bad[r.pat_mini]; delete SG.offBad[r.pat_mini]; delete SG.retried[r.pat_mini]; });
+    phSignDay(); renderPh();
+  }
+  function phOpen(i) { var l = phCur(); if (l && l[i]) openViewer(l, i, dayCtx(), { a: 'ph', i: i }); }
+  function phReset() {
+    PH.tok++; PH.den = null; PH.list = null; PH.at = 0; PH.err = null; PH.net = false; PH.shown = PH_PORC;
+    PHM = {}; PHM_K = []; SP = null; DEMO_SEEN = {};
+    SG.m = {}; SG.pend = {}; SG.failAt = {}; SG.bad = {}; SG.offBad = {}; SG.retried = {};
+    closeViewer(true);
+    try { if (window.caches) caches.delete('ailab-snimki-v1').catch(function () {}); } catch (e) {}   // снимки след „Изход“ не остават
+  }
+
+  // --- лист „Източници“: снимките на всяко съобщение под източника му [§4.5] ---
+  function phByMsg(list, msgs) { var o = {}; msgs.forEach(function (m) { o[m] = []; }); (list || []).forEach(function (r) { if (o[r.msg_id]) o[r.msg_id].push(r); }); return o; }
+  function srcPhStart(den, izvori) {
+    var msgs = [], lbl = {};
+    (izvori || []).forEach(function (s) { var m = srcMsg(s); if (m && !lbl[m]) { msgs.push(m); lbl[m] = 'Източник [' + s.n + ']'; } });
+    if (!msgs.length || !sheetEl || den == null) { SP = null; return; }
+    var tok = ++spTok, have = phListFor(den);
+    SP = { el: sheetEl, den: den, msgs: msgs, lbl: lbl, rows: null, err: null, tok: tok };
+    // денят е зареден (С1 е дошла) → филтър по msg_id, без заявка; иначе С2 за всички ида наведнъж
+    if (have) { SP.rows = phByMsg(have, msgs); srcPhFill(); return; }
+    if (offNow()) { SP.err = 'net'; srcPhFill(); return; }
+    srcPhFill();
+    api.snimkiMsg(den, msgs).then(function (rows) {
+      if (!SP || SP.tok !== tok || SP.el !== sheetEl) return;   // листът вече е друг → изхвърля се
+      SP.rows = phByMsg((rows || []).map(normPh), msgs); srcPhFill();
+    }, function (e) {
+      if (!SP || SP.tok !== tok || SP.el !== sheetEl) return;
+      if (phMissing(e)) SP.rows = {}; else SP.err = isNet(e) || isAuth(e) ? 'net' : 'err';
+      srcPhFill();
+    });
+  }
+  function srcPhFill() {
+    if (!SP) return;
+    if (!sheetEl || SP.el !== sheetEl) { SP = null; return; }
+    Array.prototype.forEach.call(sheetEl.querySelectorAll('.src-ph[data-msg]'), function (c) {
+      var m = c.getAttribute('data-msg'), h = '';
+      if (SP.err) h = '<p class="src-phl">' + (SP.err === 'net' ? '📴 Снимките — когато има покритие' : '📷 Снимките не се заредиха') + '</p>';
+      else if (!SP.rows) h = '<p class="src-phl"><span class="pulse" aria-hidden="true"></span> 📷 зареждам снимките…</p>';
+      else {
+        var rs = SP.rows[m] || [], n = rs.length, show = Math.min(n, 6);
+        h = rs.slice(0, show).map(function (r, i) {
+          var im = phImg(r.pat_mini, r);
+          return '<button type="button" class="ph-t ph-s' + (im.x ? ' ph-x' : '') + '" data-a="srcPh" data-msg="' + esc(m) + '" data-i="' + i + '" aria-label="' + esc(phLbl(i, n, r)) + '">' + im.h + '</button>';
+        }).join('') + (n > 6 ? '<button type="button" class="ph-t ph-s ph-pl" data-a="srcPh" data-msg="' + esc(m) + '" data-i="6" aria-label="' + esc('Още ' + (n - 6) + ' снимки — отвори прегледа') + '">+' + (n - 6) + '</button>' : '');
+      }
+      if (c._h !== h) { c.innerHTML = h; c._h = h; }
+    });
+  }
+  function srcPhOpen(m, i) {
+    if (!SP || !SP.rows || !SP.rows[m] || !SP.rows[m].length) return;
+    openViewer(SP.rows[m], i, SP.lbl[m] || '', { a: 'srcPh', msg: m, i: i });
+  }
+
+  // --- Табло: лента под датата в потока „Какво се промени“ [§4.6] ---
+  // С3 за порцията → f.ph[den_id] = {broi, items} (само пътища — без адреси; живее върху потока f)
+  function phMergeFeed(f, ids, rows) {
+    if (!f.ph) f.ph = {};
+    if (!Array.isArray(rows)) return;   // грешка или липса на С3 = без снимки
+    var by = {};
+    rows.forEach(function (r) {
+      var p = by[r.den_id] || (by[r.den_id] = { broi: +r.broi || 0, items: [] }), x = {};
+      PH_TB.forEach(function (c) { x[c] = r[c]; });
+      p.items.push(normPh(x));
+    });
+    ids.forEach(function (id) { if (by[id]) f.ph[id] = by[id]; else delete f.ph[id]; });
+  }
+  function fdPh(f, r) {
+    var p = f.ph && f.ph[r.id]; if (!p || !p.broi || !p.items || !p.items.length) return '';
+    var its = p.items.slice(0, 4), more = p.broi - its.length, nm = SELN[r.obekt] || r.obekt;
+    return '<div class="fd-ph o-' + esc(r.obekt) + '" role="group" aria-label="' + esc('Снимки · ' + lcDay(r.data) + ' · ' + nm + ': ' + p.broi) + '">' +
+      its.map(function (x, i) {
+        var im = phImg(x.pat_mini, x, true);
+        return '<button type="button" class="ph-t fd-pt' + (im.x ? ' ph-x' : '') + '" data-a="tPh" data-den="' + esc(r.id) + '" data-sid="' + esc(x.id) + '" aria-label="' +
+          esc('Снимка ' + (i + 1) + ' от ' + p.broi + ' · ' + phTime(x) + ' · ' + nm) + '">' + im.h + '</button>';
+      }).join('') +
+      (more > 0 ? '<button type="button" class="fd-pm" data-a="tPhMore" data-o="' + esc(r.obekt) + '" data-den="' + esc(r.id) + '" aria-label="' + esc('Още ' + more + ' снимки — отвори деня') + '">+' + more + '</button>' : '') +
+      '</div>';
+  }
+  // Плочка от лентата → преглед на целия ден от тази снимка; докато С1 чака — увеличената миниатюра + „Зареждам снимките…“
+  function tPhOpen(den, sid) {
+    if (!den) return;
+    var f = selState(TB.sel).feed, p = f && f.ph ? f.ph[den] : null;
+    var row = p ? p.items.filter(function (x) { return x.id === sid; })[0] : null;
+    var d = dniById(den) || (f ? f.rows.filter(function (x) { return x.id === den; })[0] : null) || {};
+    var ctx = d.data ? lcDay(d.data) + ' · ' + (SELN[d.obekt] || '') : '', from = { a: 'tPh', sid: sid };
+    var have = phListFor(den);
+    if (have && have.length) { openViewer(have, phIdx(have, sid), ctx, from); return; }
+    openViewer(row ? [row] : [], 0, ctx, from, true);
+    var tok = PV.tok;
+    api.snimki(den).then(function (rows) {
+      var list = (rows || []).map(normPh);
+      phMem(den, list);
+      if (!PV || PV.tok !== tok) return;
+      PV.loading = false;
+      if (!list.length) { PV.err = 'Няма качени снимки за този ден.'; pvPaint(); return; }
+      pvSetList(list, phIdx(list, sid));
+    }, function (e) {
+      if (!PV || PV.tok !== tok) return;
+      PV.loading = false;
+      PV.err = isNet(e) || isAuth(e) ? '📴 Снимките — когато има покритие.' : phMissing(e) ? 'Няма качени снимки за този ден.' : 'Снимките не се заредиха: ' + errBg(e);
+      pvPaint();
+    });
+  }
+
+  // --- преглед на цял екран [§4.7] ---
+  // Родният свайп (scroll-snap), без библиотека. В DOM — най-много 3 картинки със src (текущата ±1).
+  function rafX(fn) { return window.requestAnimationFrame ? window.requestAnimationFrame(fn) : setTimeout(fn, 16); }
+  function openViewer(list, i, ctx, from, loading) {
+    closeViewer(true);
+    var prev = document.activeElement, el = document.createElement('div');
+    el.className = 'pv'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true');
+    el.innerHTML = '<div class="pv-top"><span class="pv-n" aria-hidden="true"></span><span class="pv-ctx">' + esc(ctx || '') + '</span>' +
+        '<button type="button" class="pv-cl" data-a="pvClose" aria-label="Затвори">×</button></div>' +
+      '<div class="pv-tr"></div>' +
+      '<div class="pv-bot"><div class="pv-cap"></div><div class="pv-b">' +
+        '<button type="button" data-a="pvPrev" aria-label="Предишна снимка">‹</button>' +
+        '<button type="button" class="pv-go" data-a="pvClose">Затвори</button>' +
+        '<button type="button" data-a="pvNext" aria-label="Следваща снимка">›</button>' +
+        '<a class="pv-full" target="_blank" rel="noopener" hidden>⤢ Пълен размер</a></div></div>';
+    document.body.appendChild(el); document.body.classList.add('noscroll');
+    PV = { el: el, tr: el.querySelector('.pv-tr'), list: [], i: 0, from: from || null, prev: prev, loading: !!loading, err: null, tok: ++pvTok,
+      raf: 0, lock: 0, target: null, tgtT: 0, blob: '', blobFor: '' };
+    PV.onResize = function () { if (PV) { PV.lock++; pvLeft(); } };   // завъртане → същата снимка [К29]
+    window.addEventListener('resize', PV.onResize);
+    el.addEventListener('gesturestart', function (e) { e.preventDefault(); });   // Safari: щипването не увеличава страницата [К29]
+    PV.tr.addEventListener('scroll', pvScroll, { passive: true });
+    pvSetList(list || [], i);
+    var tok = PV.tok;
+    setTimeout(function () { var b = el.querySelector('.pv-go'); if (PV && PV.tok === tok && b) { try { b.focus({ preventScroll: true }); } catch (e) {} } }, 30);
+  }
+  function pvSetList(list, i) {
+    var p = PV; if (!p) return;
+    p.list = list; p.i = Math.max(0, Math.min(i || 0, list.length - 1)); p.lock++; p.target = null;
+    p.tr.innerHTML = list.map(function (r, k) {
+      var d = phDims(r, 1280);
+      return '<div class="pv-s" data-i="' + k + '"><img alt="" decoding="async" crossorigin="anonymous" width="' + d[0] + '" height="' + d[1] + '"' +
+        ' style="max-width:100%;max-height:calc(100dvh - 150px);object-fit:contain"><span class="pv-off" hidden>📴 Голямата — когато има покритие</span></div>';
+    }).join('');
+    Array.prototype.forEach.call(p.tr.children, function (s) {
+      s._bad = {};
+      var img = s.firstChild;
+      img.addEventListener('error', function () { var u = img.getAttribute('src'); if (u) s._bad[u] = 1; img.removeAttribute('src'); s._u = ''; s._big = false; if (PV === p) pvPaint(); });
+    });
+    // големите на целия списък — с един подпис при отваряне (≤ 50 на порция): свайпът не чака мрежа [К24]
+    if (!DEMO && !offNow()) {
+      var need = [], tok = p.tok;
+      list.forEach(function (r) { if (r.pat && !SG.bad[r.pat]) need.push(r.pat); if (r.pat_mini && !sgOk(r.pat_mini)) need.push(r.pat_mini); });
+      if (need.length) sign(need).then(function () { if (PV && PV.tok === tok) phRepaint(); }, function () { if (PV && PV.tok === tok) phRepaint(); });
+    }
+    pvPaint(); pvLeft();
+  }
+  // scrollLeft в rAF с временно scroll-snap-type:none — iOS Safari иначе често остава на 0 [К29]
+  function pvLeft() {
+    var p = PV; if (!p) return;
+    rafX(function () {
+      if (PV !== p) return;
+      var tr = p.tr; tr.style.scrollSnapType = 'none';
+      tr.scrollLeft = p.i * tr.clientWidth;
+      rafX(function () { if (PV !== p) return; tr.style.scrollSnapType = ''; if (p.lock) p.lock--; });
+    });
+  }
+  function pvScroll() {
+    var p = PV; if (!p || p.raf) return;
+    p.raf = rafX(function () {
+      p.raf = 0;
+      if (PV !== p || p.lock) return;
+      var w = p.tr.clientWidth || 1, x = p.tr.scrollLeft;
+      if (p.target != null) { if (Math.abs(x - p.target * w) > 2 && Date.now() - p.tgtT < 900) return; p.target = null; }
+      var k = Math.max(0, Math.min(p.list.length - 1, Math.round(x / w)));
+      if (k !== p.i) { p.i = k; pvPaint(); }
+    });
+  }
+  function pvStep(d) {
+    var p = PV; if (!p) return;
+    var k = Math.max(0, Math.min(p.list.length - 1, p.i + d)); if (k === p.i) return;
+    var w = p.tr.clientWidth;
+    p.i = k; p.target = k; p.tgtT = Date.now(); pvPaint();
+    try { p.tr.scrollTo({ left: k * w, behavior: reduced() ? 'auto' : 'smooth' }); } catch (e) { p.tr.scrollLeft = k * w; }
+  }
+  // Голямата: адрес от паметта; няма го (подписът при отваряне е паднал / изтекъл / отворено без покритие) → нов подпис
+  // (sgNeed пази от повторения); след неуспех — нов опит чак след 60 с (таймер, за да стане и без свайп).
+  function pvBig(r) {
+    if (!r || !r.pat) return null;
+    if (DEMO) return offNow() && !DEMO_SEEN[r.pat] ? null : demoUrl(r.pat);
+    if (SG.bad[r.pat]) return null;
+    if (sgOk(r.pat, 60000)) return SG.m[r.pat].u;
+    if (!offNow() && db && user) {
+      var fa = SG.failAt[r.pat], ago = fa ? Date.now() - fa : 1e9;
+      if (ago >= 60000) sgNeed(r.pat); else pvRetryLater(60000 - ago);
+    }
+    return null;
+  }
+  function pvRetryLater(ms) {
+    var p = PV; if (!p || p.retryT) return;
+    p.retryT = setTimeout(function () { p.retryT = 0; if (PV === p) pvPaint(); }, Math.max(1000, ms + 50));
+  }
+  function pvCap(r) {
+    if (!r) return '';
+    var iz = r.izvor ? (r.izvor_vid === 'kanal' ? 'канал „' + r.izvor + '“' : r.izvor_vid === 'chat' ? 'чат „' + r.izvor + '“' : r.izvor) : '';
+    return esc([r.avtor, phTime(r), iz].filter(Boolean).join(' · ')) + (r.opisanie ? '<div class="pv-op">' + esc(r.opisanie) + '</div>' : '');
+  }
+  function pvPaint() {
+    var p = PV; if (!p) return;
+    var n = p.list.length, i = p.i, r = p.list[i];
+    p.el.setAttribute('aria-label', n ? 'Снимки · ' + (i + 1) + ' от ' + n : 'Снимки');
+    p.el.querySelector('.pv-n').textContent = n && !p.loading ? (i + 1) + ' / ' + n : '';
+    var cap = p.el.querySelector('.pv-cap');
+    var ch = p.loading ? '<span class="pulse" aria-hidden="true"></span> Зареждам снимките…' : p.err ? esc(p.err) : pvCap(r);
+    if (cap._h !== ch) { cap.innerHTML = ch; cap._h = ch; }
+    p.el.querySelector('[data-a="pvPrev"]').disabled = i <= 0;
+    p.el.querySelector('[data-a="pvNext"]').disabled = i >= n - 1;
+    // „⤢ Пълен размер“ — подписаният адрес на голямата в отделен прозорец (там щипването работи) [К35]
+    var a = p.el.querySelector('.pv-full'), bu = p.loading ? null : pvBig(r);
+    if (bu && DEMO) {   // браузърът не отваря data: адрес в нов прозорец → blob
+      if (p.blobFor !== bu) { if (p.blob) { try { URL.revokeObjectURL(p.blob); } catch (e) {} } p.blob = demoBlob(r); p.blobFor = bu; }
+      bu = p.blob;
+    }
+    if (bu) { if (a.getAttribute('href') !== bu) a.setAttribute('href', bu); a.hidden = false; }
+    else { a.removeAttribute('href'); a.hidden = true; }
+    Array.prototype.forEach.call(p.tr.children, function (s, k) { pvSlide(p, s, k); });
+  }
+  // Слайд: миниатюрата (вече е в кеша) веднага, разтегната; голямата се тегли встрани и сменя миниатюрата при onload.
+  function pvSlide(p, s, k) {
+    var img = s.firstChild, off = s.lastChild, r = p.list[k];
+    if (!r || Math.abs(k - p.i) > 1) {
+      if (img.hasAttribute('src')) img.removeAttribute('src');
+      s._u = ''; s._want = ''; s._big = false; off.hidden = true; s.classList.remove('pv-none');
+      return;
+    }
+    var big = pvBig(r), mini = srcFor(r.pat_mini);
+    if (mini && s._bad[mini]) mini = null;
+    if (big && s._bad[big]) big = null;
+    if (!s._big) {
+      if (mini && s._u !== mini) { img.src = mini; s._u = mini; }
+      if (big && s._want !== big) {
+        s._want = big;
+        var im = new Image();
+        im.crossOrigin = 'anonymous';
+        im.onload = function () {
+          if (PV !== p || s._want !== big || Math.abs(k - p.i) > 1) return;
+          img.src = big; s._u = big; s._big = true;
+          if (DEMO) DEMO_SEEN[r.pat] = 1;
+          off.hidden = true; s.classList.remove('pv-none');
+        };
+        im.onerror = function () {
+          if (PV !== p || s._want !== big) return;
+          s._want = '';
+          if (!DEMO && !offNow() && !SG.retried[r.pat]) { SG.retried[r.pat] = 1; delete SG.m[r.pat]; sign([r.pat]).then(phRepaint, phRepaint); return; }
+          s._bad[big] = 1; pvPaint();
+        };
+        im.src = big;
+      }
+    }
+    // лентата: без покритие → „когато има покритие“; с покритие, но подписът на голямата е паднал → „опитвам пак“
+    var failB = !DEMO && !offNow() && !!SG.failAt[r.pat] && !SG.bad[r.pat];
+    var offT = offNow() ? '📴 Голямата — когато има покритие' : 'Голямата не дойде — опитвам пак';
+    if (off.textContent !== offT) off.textContent = offT;
+    off.hidden = !!(s._big || big || !r.pat || p.loading || !(offNow() || failB));
+    s.classList.toggle('pv-none', !s._u && !big && mini === null);
+  }
+  function pvFromEl(f) {
+    if (!f) return null;
+    var q = '[data-a="' + f.a + '"]' + (f.i != null ? '[data-i="' + (+f.i) + '"]' : '') + (f.sid != null ? '[data-sid="' + (+f.sid) + '"]' : '');
+    var l = document.querySelectorAll(q);
+    for (var j = 0; j < l.length; j++) if (f.msg == null || l[j].getAttribute('data-msg') === String(f.msg)) return l[j];
+    return null;
+  }
+  function closeViewer(silent) {
+    var p = PV; if (!p) return;
+    PV = null;
+    window.removeEventListener('resize', p.onResize);
+    if (p.retryT) { clearTimeout(p.retryT); p.retryT = 0; }
+    if (p.blob) { try { URL.revokeObjectURL(p.blob); } catch (e) {} }
+    Array.prototype.forEach.call(p.el.querySelectorAll('img'), function (im) { im.removeAttribute('src'); });
+    p.el.remove();
+    if (!sheetEl) document.body.classList.remove('noscroll');   // листът под прегледа остава и пази noscroll [К28]
+    if (silent) return;
+    // фокусът — на плочката, от която е отворен; търси се наново: секцията може да е прерисувана [К29]
+    var t = pvFromEl(p.from) || (p.prev && document.contains(p.prev) ? p.prev : null);
+    if (t && t.focus) { try { t.focus({ preventScroll: true }); } catch (e) {} }
+  }
+  // ← / → / Esc; Tab се върти в слоя
+  function pvKey(e) {
+    if (e.key === 'Escape') { e.preventDefault(); closeViewer(); return true; }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); pvStep(-1); return true; }
+    if (e.key === 'ArrowRight') { e.preventDefault(); pvStep(1); return true; }
+    if (e.key === 'Tab') {
+      var f = Array.prototype.filter.call(PV.el.querySelectorAll('button,a[href]'), function (x) { return !x.disabled && !x.hidden; });
+      if (!f.length) { e.preventDefault(); return true; }
+      var i = f.indexOf(document.activeElement);
+      if (e.shiftKey && i <= 0) { e.preventDefault(); f[f.length - 1].focus(); }
+      else if (!e.shiftKey && (i < 0 || i === f.length - 1)) { e.preventDefault(); f[0].focus(); }
+      return true;
+    }
+    return false;
   }
 
   // ---------- екран „Табло“ (Етап 2) ----------
@@ -1276,6 +1833,7 @@
       renderDay();
       window.scrollTo(0, id ? 0 : (S.scrollY || 0));
       poll(true);
+      if (Date.now() - PH.at > PH_C1_MS) phLoad(S.den.id);   // снимките се качват след черновата [К30]
       return;
     }
     screen.innerHTML = loading;
@@ -1312,10 +1870,11 @@
     else if (view === 'day') renderLive();
     else if (view === 'deistviq') renderActsTab();
     renderTabs(); renderBanners();
+    phRepaint();   // покритие ⇄ без покритие: плочките, листът и прегледът (box() пише само разликата)
   }
   function refreshCurrent() {
     if (view === 'tablo') loadTablo();
-    else if (view === 'day') { if (S.den && !S.offline) poll(true); else boot(S.den ? S.den.id : null, !!S.den); }
+    else if (view === 'day') { if (S.den && !S.offline) { poll(true); phLoad(S.den.id); } else boot(S.den ? S.den.id : null, !!S.den); }
     else if (view === 'deistviq') loadActs();
     else if (view === 'karti' && user) loadKarti();
   }
@@ -1494,7 +2053,7 @@
   // Потокът: порция = следващите 3 реда от списъка с дни на избора (заявка 6). Старият поток стои, докато новият не дойде.
   function feedReset(sel) {
     var st = selState(sel);
-    var f = { rows: selRows(sel).slice(), items: [], pos: 0, done: false, loading: false, err: null, chain: 0, seq: ++st.fseq, fresh: true };
+    var f = { rows: selRows(sel).slice(), items: [], pos: 0, done: false, loading: false, err: null, chain: 0, seq: ++st.fseq, fresh: true, ph: {} };
     if (!f.rows.length) { f.done = true; f.fresh = false; st.feed = f; if (sel === TB.sel) renderFeed(); return; }
     if (!st.feed) { st.feed = f; f.fresh = false; }
     loadFeedPortion(sel, f, false);
@@ -1508,9 +2067,14 @@
     if (offNow()) { if (sel === TB.sel) renderFeedEnd(); return; }
     f.loading = true; f.err = null;
     if (st.feed === f && sel === TB.sel) renderFeedEnd();
-    api.tFeed(rows.map(function (r) { return r.id; })).then(function (pts) {
+    var ids = rows.map(function (r) { return r.id; });
+    // С3 (снимките) — успоредно с промените; порцията се рисува, когато и двете дойдат (само JSON — подписът не се чака) [К26].
+    // Грешка или липса на С3 = без ленти, картите се рисуват нормално.
+    Promise.all([api.tFeed(ids), api.tPh(ids).then(null, function () { return null; })]).then(function (rr) {
+      var pts = rr[0];
       f.loading = false;
       if (f.seq !== st.fseq || (!f.fresh && st.feed !== f)) return;   // по-ново презареждане на потока
+      phMergeFeed(f, ids, rr[1]);
       var have = {}, add = 0;
       f.items.forEach(function (t) { have[t.id] = 1; });
       (pts || []).forEach(function (t) { if (!have[t.id]) { have[t.id] = 1; f.items.push(normT(t)); add++; } });
@@ -1563,7 +2127,10 @@
       if (out.length && out.length + its.length > max) break;
       out = out.concat(its); pos = i + 1;
     }
-    return { rows: f.rows.map(function (r) { return r.id; }), items: out, pos: pos, done: f.done && pos === f.pos };
+    // лентите със снимки на кешираните дни — само пътищата, без адреси [§4.6]
+    var ph = {};
+    for (var j = 0; j < pos; j++) { var k = f.rows[j].id; if (f.ph && f.ph[k]) ph[k] = f.ph[k]; }
+    return { rows: f.rows.map(function (r) { return r.id; }), items: out, pos: pos, done: f.done && pos === f.pos, ph: ph };
   }
   function saveTablo(max) {
     if (!TB.hasBase) return;
@@ -1591,7 +2158,8 @@
       if (s.feed && !st.feed) {
         var rows = [], pos = s.feed.pos || 0;
         (s.feed.rows || []).forEach(function (id, i) { if (by[id]) rows.push(by[id]); else if (i < (s.feed.pos || 0)) pos--; });
-        st.feed = { rows: rows, items: (s.feed.items || []).map(normT), pos: Math.max(0, pos), done: !!s.feed.done, loading: false, err: null, chain: 0, seq: st.fseq, fresh: false };
+        st.feed = { rows: rows, items: (s.feed.items || []).map(normT), pos: Math.max(0, pos), done: !!s.feed.done, loading: false, err: null, chain: 0, seq: st.fseq, fresh: false,
+          ph: s.feed.ph && typeof s.feed.ph === 'object' ? s.feed.ph : {} };
       }
     });
     return true;
@@ -1763,23 +2331,48 @@
         '<button type="button" class="pa" data-a="tAct" data-tid="' + esc(t.id) + '">→ Действие</button>' +
         '<button type="button" class="pa" data-a="tOpen" data-o="' + esc(r.obekt) + '" data-den="' + esc(r.id) + '" data-tid="' + esc(t.id) + '">Денят ›</button></div></article>';
   }
+  // Потокът по групи (една дата = <div class="fd-g">, display:contents — подредбата е същата): пише се само групата,
+  // чийто HTML се е сменил — правилото на box(), но за всяко дете. Нова порция или подпис за лентите не пресъздават
+  // вече заредените миниатюри и бутоните над пръста (без премигване и без загубен фокус).
+  function feedPut(n, parts) {
+    var have = {};
+    for (var k = n.childNodes.length - 1; k >= 0; k--) { var x = n.childNodes[k]; if (x._g) have[x._g] = x; else n.removeChild(x); }
+    parts.forEach(function (p, i) {
+      var c = have[p[0]];
+      if (c) delete have[p[0]];
+      else { c = document.createElement('div'); c.className = 'fd-g'; c._g = p[0]; c._h = null; }
+      if (c._h !== p[1]) { c.innerHTML = p[1]; c._h = p[1]; }
+      if (n.children[i] !== c) n.insertBefore(c, n.children[i] || null);
+    });
+    Object.keys(have).forEach(function (g) { n.removeChild(have[g]); });
+  }
   function renderFeed() {
-    var el = box('#tb-feed'); if (!el) return;
-    var f = selState(TB.sel).feed, h = '', lastD = '', by = {};
+    var n = $('#tb-feed'); if (!n) return;
+    var f = selState(TB.sel).feed, parts = [], by = {}, kn = {};
     if (f) {
       f.items.forEach(function (t) { (by[t.den_id] = by[t.den_id] || []).push(t); });
+      // по дати: разделител → ленти със снимки (Амур преди Скай; само за първите 20 дати — паметта на iPhone) → картите
+      var grp = [], cur = null;
       f.rows.slice(0, f.pos).forEach(function (r) {
-        var its = by[r.id]; if (!its || !its.length) return;   // дни без промени не се показват
-        its.sort(function (a, b) { return (b.vajnost || 1) - (a.vajnost || 1) || (a.red || 0) - (b.red || 0) || a.id - b.id; });
-        if (r.data !== lastD) {
-          lastD = r.data;
-          var nw = f.rows.some(function (x) { return x.data === r.data && isNewDay(x); });
-          h += '<div class="fd-day"><span>' + esc(dayTitle(r.data)) + '</span>' + (nw ? '<span class="pill p-new">🆕 ново</span>' : '') + '</div>';
-        }
-        h += its.map(function (t) { return fdCard(t, r); }).join('');
+        var its = by[r.id]; if (!its || !its.length) return;   // дни без промени не се показват (и лентата им я няма)
+        if (!cur || cur.data !== r.data) { cur = { data: r.data, rows: [] }; grp.push(cur); }
+        cur.rows.push(r);
+      });
+      grp.forEach(function (g, gi) {
+        var nw = f.rows.some(function (x) { return x.data === g.data && isNewDay(x); });
+        var h = '<div class="fd-day"><span>' + esc(dayTitle(g.data)) + '</span>' + (nw ? '<span class="pill p-new">🆕 ново</span>' : '') + '</div>';
+        if (gi < 20) h += g.rows.slice().sort(function (a, b) { return a.obekt < b.obekt ? -1 : a.obekt > b.obekt ? 1 : 0; }).map(function (r) { return fdPh(f, r); }).join('');
+        g.rows.forEach(function (r) {
+          var its = by[r.id];
+          its.sort(function (a, b) { return (b.vajnost || 1) - (a.vajnost || 1) || (a.red || 0) - (b.red || 0) || a.id - b.id; });
+          h += its.map(function (t) { return fdCard(t, r); }).join('');
+        });
+        var key = g.data + (kn[g.data] ? '~' + kn[g.data] : '');   // същата дата втори път (не бива, но ключът остава уникален)
+        kn[g.data] = (kn[g.data] || 0) + 1;
+        parts.push([key, h]);
       });
     }
-    el.innerHTML = h;
+    feedPut(n, parts);
     renderFeedEnd();
   }
   function renderFeedEnd() {
@@ -2026,16 +2619,23 @@
     goDay(o, id, tid);
   }
   // Ден за обекта и деня на точката: денят е избран в лентата, точката светва под горната лента.
-  function goDay(o, id, tid) {
+  // ph = true → след рисуването денят се скролва до „📷 Снимки“ („+N“ от лентата на Таблото)
+  function goDay(o, id, tid, ph) {
     if (offNow() && !(S.den && S.den.id === id) && !dayCached(o, id)) { toast('Този ден не е запазен на телефона — отвори го, когато има покритие.'); return; }
     tMeasure();
     setObekt(o);
-    S.flash = { den: id, tid: tid || null };
+    S.flash = { den: id, tid: tid || null, ph: !!ph };
     go('day', { den: id, force: true });
   }
   function flashPoint() {
     var f = S.flash; if (!f || view !== 'day' || !S.den || S.den.id !== f.den) return;
     S.flash = null;
+    if (f.ph) {   // под горната лента, като точката
+      var p = $('#ph'); if (!p) return;
+      var tw0 = $('.topwrap'), off0 = (tw0 ? tw0.getBoundingClientRect().height : 0) + 10;
+      window.scrollTo(0, Math.max(0, p.getBoundingClientRect().top + (window.pageYOffset || 0) - off0));
+      return;
+    }
     if (!f.tid) return;
     var el = screen.querySelector('.pc[data-tid="' + f.tid + '"]');
     if (!el) { toast('Точката е сменена в нова версия — прегледай деня'); return; }
@@ -2093,8 +2693,8 @@
   function tSrc(tid) {
     var t = tFind(tid); if (!t) return;
     normT(t);
-    openSheet('Източници (' + t.izvori.length + ')', '<p class="sh-q">' + esc(clip(t.tekst, 220)) + '</p>' + t.izvori.map(srcItem).join('') +
-      '<p class="small muted">Оригиналите са в OneDrive, в папката на деня. На телефона се вижда описанието.</p>');
+    openSheet('Източници (' + t.izvori.length + ')', '<p class="sh-q">' + esc(clip(t.tekst, 220)) + '</p>' + t.izvori.map(srcWithPh).join('') + SRC_NOTE);
+    srcPhStart(t.den_id, t.izvori);
   }
   // „+“ според екрана: от Таблото/Действия денят е празен (обектът — в етикета, [К28])
   function plusCtx() { return view === 'tablo' ? { src: 'tablo', o: TB.sel } : view === 'deistviq' ? { src: 'acts' } : null; }
@@ -2202,9 +2802,24 @@
       case 'demoSheet': openDemoSheet(); break;
       case 'dDay': closeSheet(); demoNewDay(); break;
       case 'dObekt': dSwitchObekt(); break;
+      // Етап 3 — снимки
+      case 'ph': phOpen(+el.getAttribute('data-i') || 0); break;
+      case 'phMore': phMore(); break;
+      case 'phRetry': phRetry(); break;
+      case 'phJump': jump('ph'); break;
+      case 'srcPh': srcPhOpen(el.getAttribute('data-msg'), +el.getAttribute('data-i') || 0); break;
+      case 'tPh': tPhOpen(+el.getAttribute('data-den') || null, +el.getAttribute('data-sid') || null); break;
+      case 'tPhMore': { var po = el.getAttribute('data-o'), pd = +el.getAttribute('data-den') || null; if (pd && (po === 'ag' || po === 'soft')) goDay(po, pd, null, true); } break;
+      case 'pvPrev': pvStep(-1); break;
+      case 'pvNext': pvStep(1); break;
+      case 'pvClose': closeViewer(); break;
     }
   });
+  // картинките на плочките: грешка → сива / ново подписване; в демото — кои са видени (за „без покритие“)
+  document.addEventListener('error', function (e) { var t = e.target; if (t && t.tagName === 'IMG' && t.hasAttribute('data-p')) phImgErr(t); }, true);
+  document.addEventListener('load', function (e) { var t = e.target; if (DEMO && t && t.tagName === 'IMG' && t.getAttribute('src')) { var p = t.getAttribute('data-p'); if (p) DEMO_SEEN[p] = 1; } }, true);
   document.addEventListener('keydown', function (e) {
+    if (PV && pvKey(e)) return;   // прегледът е над листа: Esc затваря първо него [К28]
     if (e.key === 'Escape' && sheetEl) { closeSheet(); return; }
     // колоните на графиката са role="button" (SVG) — Enter/Space избира деня
     var t = e.target;
@@ -2220,7 +2835,7 @@
   }, true);
   document.addEventListener('visibilitychange', function () {
     if (document.hidden) { commitUndos(); if (view === 'tablo') seenWrite(); return; }   // „Отмени“ не чака скрито приложение
-    if (view === 'day') poll(true);
+    if (view === 'day') { poll(true); if (S.den && !offNow() && Date.now() - PH.at > PH_C1_MS) phLoad(S.den.id); }   // [К30]
     else if (view === 'tablo' && stale60(TB.okAt)) { TB.seenBase = seenRead() || TB.seenBase; loadTablo(); }
     else if (view === 'deistviq' && stale60(S.actsOkAt)) loadActs();
   });
@@ -2284,6 +2899,7 @@
     if (tablo) { tablo.innerHTML = ''; tablo._h = null; }
     S.den = null; S.dni = []; S.tochki = []; S.res = []; S.deistviq = []; S.counts = {}; S.svezhest = []; S.svAt = 0;
     S.dataAt = ''; S.actsAt = ''; S.actsOkAt = 0; S.okAt = 0; S.newVersiq = 0; S.sig = '';
+    phReset();   // подписаните адреси, кешът с миниатюрите ailab-snimki-v1 и прегледът
   }
 
   // ---------- Карти и търсене (Етап 0) ----------
@@ -2457,6 +3073,25 @@
         return D.tochki.filter(function (t) { return t.grupa === 'promqna' && ids.indexOf(t.den_id) >= 0; })
           .sort(function (a, b) { return (b.vajnost || 1) - (a.vajnost || 1) || (a.red || 0) - (b.red || 0) || a.id - b.id; }).slice(0, 150).map(function (t) { return pick(t, FEED_COLS); });
       });
+    },
+    // Снимки — същата форма и подредба като истинските (С1, С2, С3)
+    snimki: function (id) { return later(function () { return D.snimki.filter(function (s) { return s.den_id === id; }).sort(phSort).slice(0, 500).map(function (s) { return pick(s, PH_COLS); }); }); },
+    snimkiMsg: function (denId, ids) {
+      return later(function () { return D.snimki.filter(function (s) { return s.den_id === denId && ids.indexOf(s.msg_id) >= 0; }).sort(phSort).slice(0, 200).map(function (s) { return pick(s, PH_COLS); }); });
+    },
+    // като snimki_tablo: първо към „Какво се промени“, в тях първо n = 1 (по една от съобщение) [К33], после по час
+    tPh: function (ids) {
+      return later(function () {
+        var out = [];
+        ids.forEach(function (den) {
+          var all = D.snimki.filter(function (s) { return s.den_id === den; }), prom = {};
+          if (!all.length) return;
+          D.tochki.forEach(function (t) { if (t.den_id === den && t.grupa === 'promqna') (t.izvori || []).forEach(function (s) { var m = srcMsg(s); if (m) prom[m] = 1; }); });
+          all.sort(function (a, b) { return (prom[b.msg_id] ? 1 : 0) - (prom[a.msg_id] ? 1 : 0) || (b.n === 1 ? 1 : 0) - (a.n === 1 ? 1 : 0) || phSort(a, b); });
+          all.slice(0, 4).forEach(function (s) { var r = pick(s, 'den_id,id,msg_id,vreme,n,pat_mini,shirina,visochina'); r.broi = all.length; out.push(r); });
+        });
+        return out;
+      });
     }
   };
   // като истинската база: външните ключове се проверяват (23503), а часът от телефона (kogda/sazdadeno) се пази
@@ -2510,11 +3145,12 @@
   // „Лаптопът качва нов ден“ → Амур 25.09: +1 ден за одобрение, +1 решение, „🆕“, хапче „↑ Нови промени“ (ако си скролнал).
   function demoNewDay() {
     if (D.dni.some(function (x) { return x.obekt === 'ag' && x.data === '2026-09-25'; })) { toast('Денят 25.09 вече е качен — „Започни демото отначало“ за нов опит.'); return; }
-    dKratak('ag', '2026-09-25', 'chernova', 1, 51, 'Армировката на плоча +9,30 в сграда 2 започна от ос 1. На обекта — 51 души.', [
+    var nd = dKratak('ag', '2026-09-25', 'chernova', 1, 51, 'Армировката на плоча +9,30 в сграда 2 започна от ос 1. На обекта — 51 души.', [
       [4, 'promqna', 'Сграда 2, плоча +9,30 — армировката започна от ос 1; до обяд стигна ос 3.', 'saobshteno', 2, [dChat(1, 'ТР на обекта · канал на обекта', '12:40')]],
       [5, 'promqna', 'Доставени 6 т арматура Ø12 — първата част от закъснялата доставка.', 'saobshteno', 1, [dMail(2, 'доставчикът на арматура · товарителница', '09:15')]],
       [7, 'reshenie', 'Надзорът иска оглед на армировката на +9,30 преди бетона — да се уговори час за понеделник.', 'saobshteno', 2, [dMail(3, 'надзорът · писмо', '14:05')]]
     ], nowIso());
+    dPhSrc(nd, dFirstChat(nd), 3);   // 3 снимки към първата промяна [§4.9]
     toast('Лаптопът качи нов ден: Амур Гардънс · 25.09');
     setTimeout(function () { if (view === 'tablo') loadTablo(); else if (view === 'day') poll(true); else loadTablo(true); }, 700);
   }
@@ -2530,10 +3166,19 @@
   function dMail(n, k, v) { return dSrc(n, 'Поща', k, v, 'Поща/' + v.replace(':', '') + '00.eml'); }
   function dChat(n, k, v) { return dSrc(n, 'Тиймс', k, v, 'Оригинали/' + v.replace(':', '') + '00.json'); }
   function dMd(o) { return RAZDELI.map(function (t, i) { return '## ' + (i + 1) + '. ' + t + '\n' + (o[i + 1] || 'Не е постъпила информация.'); }).join('\n\n'); }
+  // Източник от Тиймс получава измислено ид на съобщението = моментът му в ms + n на източника — правилото на истинското [К4, К34].
+  // Точките се строят преди деня (датата я знае само dAdd) → ид-то се дописва тук; цитирано от две точки — същото ид.
+  function dMsgFix(s, data) {
+    var m = s && /^Оригинали\/(\d{2})(\d{2})00\.json$/.exec(s.kade || '');
+    if (!m) return s;
+    s.kade = 'Оригинали/' + m[1] + m[2] + '00_' + (Date.parse(data + 'T' + m[1] + ':' + m[2] + ':00+03:00') + (+s.n || 0)) + '_20260101000000000.json';
+    return s;
+  }
   function dAdd(obekt, data, status, versiq, hora, rezyume, pts, zapis, hesh, obnoven) {
     var d = { id: ++D.did, obekt: obekt, data: data, status: status, versiq: versiq, hesh: hesh || Math.random().toString(16).slice(2, 10), zapis_md: zapis,
       rezyume: rezyume, hora: hora, sazdaden: dT(data + 'T17:05:00+03:00'), obnoven: obnoven || dT(data + 'T17:20:00+03:00'), vpisan_pat: status === 'vpisana' ? demoPat(data, versiq) : null };
     D.dni.push(d);
+    pts.forEach(function (p) { (p[5] || []).forEach(function (s) { dMsgFix(s, data); }); });
     pts.forEach(function (p, i) { D.tochki.push({ id: ++D.tid, den_id: d.id, razdel: p[0], grupa: p[1], tekst: p[2], istina: p[3] || 'saobshteno', vajnost: p[4] || 1, izvori: p[5] || [], red: i + 1 }); });
     return d;
   }
@@ -2549,7 +3194,8 @@
     return d ? D.tochki.filter(function (t) { return t.den_id === d.id && t.grupa === 'reshenie'; })[0] : null;
   }
   function demoInit() {
-    D = { dni: [], tochki: [], resheniq: [], deistviq: [], metriki: [], svezhest: [], seq: 5000, lt: 0, did: 100, tid: 1000 };
+    D = { dni: [], tochki: [], resheniq: [], deistviq: [], metriki: [], svezhest: [], snimki: [], seq: 5000, lt: 0, did: 100, tid: 1000, sid: 7000 };
+    var HIST = [];   // дните от hist() с индекса си — за снимките [§4.9]
     window.AILAB_DEMO = D;   // само за проверка в браузъра
     var mail = dMail, chat = dChat, src = dSrc, T = dT;
     var agCh = function (n, v) { return chat(n, 'ТР на обекта · канал на обекта', v); };
@@ -2584,13 +3230,13 @@
       return out;
     }
     function hist(o, from, to, H, Rz, stOf) {
-      for (var dt = parseD(from), end = parseD(to); dt <= end; dt.setDate(dt.getDate() + 1)) {
+      for (var dt = parseD(from), end = parseD(to), hi = 0; dt <= end; dt.setDate(dt.getDate() + 1), hi++) {
         var k = ymd(dt), wd = dt.getDay(), we = wd === 0 || wd === 6, h = H[k] == null ? null : H[k], st = stOf(k), ist = st === 'vpisana' ? 'provereno' : 'saobshteno';
         var pts = we && h == null ? [[1, 'fakt', 'Неработен ден, без събития на обекта.', 'provereno', 1, [chat(1, 'охрана · чат на обекта', '19:00')]]] : dve(o, ist);
         if (!we && h == null) pts.push([3, 'neprovereno', 'Няма рапорт от Присъствия за деня — броят хора липсва.', 'saobshteno', 1, []]);
         if (Rz[k]) pts.push([7, 'reshenie', Rz[k][0], 'saobshteno', Rz[k][1], [mail(3, 'кореспонденция по темата', '11:' + pad(10 + wd * 5))]]);
         var rez = we && h == null ? 'Неработен ден.' : h == null ? 'Няма рапорт от Присъствия; работата продължи по графика. ' + pts[0][2] : 'Работен ден — ' + h + ' души. ' + pts[0][2];
-        dKratak(o, k, st, st === 'vpisana' ? 1 : 2, h, rez, pts);
+        HIST.push({ d: dKratak(o, k, st, st === 'vpisana' ? 1 : 2, h, rez, pts), i: hi, we: we });
       }
     }
     // Амур Гардънс: 26.08–15.09 (вписани). 11.09 (петък) — без рапорт (тест „няма данни“ в делник). Почивни — null, освен сб 05.09.
@@ -2646,7 +3292,8 @@
 
     // 24.09 — основният пример: 50 души; кофраж +9,30 сграда 2; доставчикът на арматура закъснява; чат 10 / Присъствия 8 кофражисти.
     var s1 = chat(1, 'ТР на обекта · канал на обекта: „кофражът е до ос 7, на плочата сме 10 кофражисти“', '07:18');
-    var s2 = src(2, 'Снимка', 'ТР на обекта · 3 снимки от плоча +9,30', '16:40', 'Снимки/164012_плоча_930.jpg');
+    // [2] — съобщение от Тиймс със снимки (като истинските: kade = Оригинали/…, ид от dMsgFix) → в листа „Източници“ под него има плочки
+    var s2 = src(2, 'Снимка', 'ТР на обекта · канал на обекта: снимки от плоча +9,30', '16:40', 'Оригинали/164000.json');
     var s3 = src(3, 'Присъствия', 'бригада кофражисти — 8 души, въведено в 08:10', '08:10', 'Присъствия/2026-09-24.json');
     var s4 = mail(4, 'доставчикът на арматура · писмо за нов срок на арматурата', '11:04');
     var s5 = chat(5, 'ПТО · чат на ПТО: „арматурата няма да дойде преди 01.10“', '11:30');
@@ -2711,7 +3358,99 @@
       { id: ++D.seq, den_id: null, tochka_id: null, vid: 'vazlozhi', tekst: 'Снимки на плоча +9,30 преди армировката', chovek: 'ТР на обекта', mqsto: null, srok: T('2026-09-25T09:00:00+03:00'), izvor: 'телефон · бутон +', status: 'zaqveno', vanshen_id: null, sazdadeno: T('2026-09-24T16:55:00+03:00'), obnoveno: null },
       { id: ++D.seq, den_id: null, tochka_id: null, vid: 'sreshta', tekst: 'Оглед на кофража с надзора', chovek: 'строителния надзор', mqsto: 'сграда 2, плоча +9,30', srok: T('2026-09-25T14:00:00+03:00'), izvor: 'телефон · бутон +', status: 'zaqveno', vanshen_id: null, sazdadeno: T('2026-09-24T17:02:00+03:00'), obnoveno: null }
     );
+
+    // Снимки (§4.9) — генерирани SVG, нито една истинска; автор = ролята от източника.
+    // Амур 24.09: 30 в 6 съобщения (8 · 6 · 5 · 5 · 4 · 2); 8-те — към първия чат-източник на първата промяна, 2-те — към
+    // източник [2] на същата промяна (16:40), другите — само снимки.
+    var a24 = dDayOf('ag', '2026-09-24');
+    dPhSrc(a24, dFirstChat(a24), 8);
+    dPhSrc(a24, s2, 2);
+    [['08:51', 6, 'ТР на обекта', 'kanal', 'канал на обекта'], ['10:05', 5, 'бригадир фасада', 'chat', 'Амур Гардънс'], ['12:34', 5, 'ТР на обекта', 'kanal', 'канал на обекта'],
+      ['14:48', 4, 'механизатор', 'chat', 'Амур Гардънс']].forEach(function (m, j) {
+      dPhMsg(a24, String(Date.parse('2026-09-24T' + m[0] + ':00+03:00') + 21 + j), m[1], m[2], m[3], m[4]);
+    });
+    var a23 = dDayOf('ag', '2026-09-23');
+    dPhSrc(a23, dFirstChat(a23), 5);
+    // Скай 23.09: нов втори източник (чат, 08:12) на решението „Сутеренът е наводнен…“ — 3 снимки
+    var k23 = dDayOf('soft', '2026-09-23'), su = k23 ? D.tochki.filter(function (t) { return t.den_id === k23.id && /^Сутеренът е наводнен/.test(t.tekst); })[0] : null;
+    if (su) { var sx = dMsgFix(chat(4, 'ТР на обекта · чат „Скай Тауърс“', '08:12'), k23.data); su.izvori.push(sx); dPhSrc(k23, sx, 3); }
+    // останалите дни от hist: i % 4 === 3 ? 0 : 2 + i % 5; Амур 11.09 и почивните — без снимки
+    HIST.forEach(function (x) {
+      var d = x.d;
+      if (x.we || (d.obekt === 'ag' && d.data === '2026-09-11') || (d.obekt === 'soft' && d.data === '2026-09-23')) return;
+      dPhSrc(d, dFirstChat(d), x.i % 4 === 3 ? 0 : 2 + x.i % 5);
+    });
   }
+  // --- демо снимки ---
+  function dDayOf(o, data) { return D.dni.filter(function (x) { return x.obekt === o && x.data === data; })[0] || null; }
+  function dFirstChat(d) {
+    if (!d) return null;
+    var t = D.tochki.filter(function (x) { return x.den_id === d.id && x.grupa === 'promqna'; }).sort(function (a, b) { return a.red - b.red || a.id - b.id; })[0];
+    return t ? (t.izvori || []).filter(function (s) { return !!srcMsg(s); })[0] || null : null;
+  }
+  // cnt снимки към съобщението; vreme = моментът на съобщението + 0–40 с; пътищата — като истинските, но .svg и никога не се теглят
+  function dPhMsg(d, msgId, cnt, avtor, vid, izvor) {
+    if (!d || !cnt) return;
+    var t = +msgId + (+msgId % 41) * 1000, base = 'demo/' + d.obekt + '/' + d.data + '/';
+    for (var n = 1; n <= cnt; n++) {
+      var id = ++D.sid, por = id % 3 === 0;
+      D.snimki.push({ id: id, den_id: d.id, obekt: d.obekt, data: d.data, msg_id: String(msgId), izvor_vid: vid, izvor: izvor, avtor: avtor,
+        vreme: new Date(t).toISOString(), n: n, pat: base + id + '.svg', pat_mini: base + 'mini/' + id + '.svg',
+        shirina: por ? 960 : 1280, visochina: por ? 1280 : 960, opisanie: null });
+    }
+  }
+  // снимки към източник от Тиймс: авторът и чатът — от описанието на източника („роля · канал/чат …“)
+  function dPhSrc(d, s, cnt) {
+    var m = srcMsg(s); if (!d || !m || !cnt) return;
+    var k = String(s.kratko || '').split(' · '), ch = String(k[1] || '').split(':')[0].trim(), q = /^чат „(.+)“$/.exec(ch);
+    dPhMsg(d, m, cnt, k[0] || 'ТР на обекта', q || /^чат/.test(ch) ? 'chat' : 'kanal', q ? q[1] : (ch || 'канал на обекта'));
+  }
+  // Картинка за демото: SVG, детерминистична по id (всяка 3-та — портретна 3:4); небе (по-топло следобед), земя,
+  // сграда със скеле · кулокран · армировъчна мрежа · сутерен с вода; рамка в цвета на обекта; „ПРИМЕРНА СНИМКА“ и „демо“.
+  var DSVG = {}, DPIC = {}, DPR = {};
+  function n1(v) { return Math.round(v * 10) / 10; }
+  function demoSvg(r) {
+    var id = +r.id; if (DSVG[id]) return DSVG[id];
+    var por = id % 3 === 0, W = por ? 300 : 400, H = por ? 400 : 300, k = id % 4, gy = n1(H * (k === 3 ? 0.44 : 0.7));
+    var pm = new Date(r.vreme).getHours() >= 13, col = r.obekt === 'soft' ? '#5AAEE6' : '#3EB489', s = '', i, x, y;
+    function ln(x1, y1, x2, y2, c, w) { return '<line x1="' + n1(x1) + '" y1="' + n1(y1) + '" x2="' + n1(x2) + '" y2="' + n1(y2) + '" stroke="' + c + '" stroke-width="' + w + '"/>'; }
+    function rc(x1, y1, w, h, c, ex) { return '<rect x="' + n1(x1) + '" y="' + n1(y1) + '" width="' + n1(w) + '" height="' + n1(h) + '" fill="' + c + '"' + (ex || '') + '/>'; }
+    s += '<defs><linearGradient id="n" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + (pm ? '#EFA66A' : '#7FB8E6') + '"/><stop offset="1" stop-color="' + (pm ? '#FBE2C4' : '#DCEEFA') + '"/></linearGradient></defs>' +
+      rc(0, 0, W, H, 'url(#n)') + rc(0, gy, W, H - gy, '#A38D70');
+    if (k === 0) {   // сграда с решетка от прозорци и скеле
+      var bx = W * 0.14, bw = W * 0.5, by = H * 0.26, sx = bx + bw + 8;
+      s += rc(bx, by, bw, gy - by, '#CFC8BC', ' stroke="#8E877C"');
+      for (y = by + 12; y < gy - 18; y += 26) for (x = bx + 10; x < bx + bw - 16; x += 24) s += rc(x, y, 12, 14, '#5E7486');
+      for (i = 0; i < 4; i++) s += ln(sx + i * 12, by - 10, sx + i * 12, gy, '#C7832B', 3);
+      for (y = by; y < gy; y += 22) s += ln(sx, y, sx + 36, y, '#C7832B', 2);
+    } else if (k === 1) {   // кулокран
+      var mx = W * 0.32, tp = H * 0.14;
+      s += rc(W * 0.55, gy - H * 0.2, W * 0.3, H * 0.2, '#CFC8BC') + ln(mx, gy, mx, tp, '#E0A11B', 4) + ln(mx + 12, gy, mx + 12, tp, '#E0A11B', 4);
+      for (y = gy; y > tp + 18; y -= 18) s += ln(mx, y, mx + 12, y - 18, '#E0A11B', 2);
+      s += ln(W * 0.1, tp, W * 0.92, tp, '#E0A11B', 5) + rc(W * 0.1, tp + 2, W * 0.1, 16, '#6B6B6B') + rc(mx - 4, tp + 4, 20, 16, '#3F5A73') +
+        ln(W * 0.76, tp, W * 0.76, H * 0.5, '#333333', 1.5) + rc(W * 0.76 - 14, H * 0.5, 28, 14, '#7A5B3A');
+    } else if (k === 2) {   // армировъчна мрежа в перспектива
+      var y0 = H * 0.4;
+      s += '<polygon points="0,' + H + ' ' + W + ',' + H + ' ' + n1(W * 0.86) + ',' + n1(y0) + ' ' + n1(W * 0.14) + ',' + n1(y0) + '" fill="#9C9A96"/>';
+      for (i = 0; i <= 12; i++) s += ln(W * i / 12, H, W * 0.14 + W * 0.72 * i / 12, y0, '#7B4A2A', 2);
+      for (i = 0; i <= 9; i++) { var fr = Math.pow(i / 9, 1.6), yy = y0 + (H - y0) * fr, lx = W * 0.14 * (1 - fr); s += ln(lx, yy, W - lx, yy, '#7B4A2A', 2); }
+    } else {   // сутерен със синя вода
+      var px = W * 0.08, pw = W * 0.84, py = gy + 6, ph = H - py - 12, wy = py + ph * 0.42;
+      s += rc(px, py, pw, ph, '#5E564D') + rc(px, wy, pw, py + ph - wy, '#3E8FD0', ' fill-opacity="0.9"');
+      for (i = 0; i < 4; i++) { var wv = wy + 8 + i * 14; s += '<path d="M' + n1(px + 8) + ' ' + n1(wv) + ' q 12 -6 24 0 t 24 0 t 24 0 t 24 0" fill="none" stroke="#A9D3F0" stroke-width="2"/>'; }
+      s += rc(px + pw - 40, wy - 26, 26, 26, '#C9502F') + ln(px + pw - 27, wy - 26, px + pw - 27, py - 30, '#333333', 3);
+    }
+    s += '<rect x="4" y="4" width="' + (W - 8) + '" height="' + (H - 8) + '" rx="6" fill="none" stroke="' + col + '" stroke-width="8"/>' +
+      '<text x="' + W / 2 + '" y="' + n1(H * 0.46) + '" text-anchor="middle" font-family="sans-serif" font-size="' + n1(W * 0.2) + '" font-weight="700" fill="#FFFFFF" fill-opacity="0.4" transform="rotate(-18 ' + W / 2 + ' ' + H / 2 + ')">демо</text>' +
+      rc(8, H - 36, W - 16, 28, '#000000', ' fill-opacity="0.55"') +
+      '<text x="' + W / 2 + '" y="' + (H - 17) + '" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="700" fill="#FFFFFF">ПРИМЕРНА СНИМКА · №' + id + '</text>';
+    return (DSVG[id] = '<svg xmlns="http://www.w3.org/2000/svg" width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '">' + s + '</svg>');
+  }
+  // Едно и също за голяма и миниатюра (векторна е); sign() в демото връща тези data: адреси — без мрежа.
+  function demoPic(r) { var id = +r.id; return DPIC[id] || (DPIC[id] = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(demoSvg(r))); }
+  function demoRow(pat) { var l = (D && D.snimki) || []; for (var i = 0; i < l.length; i++) if (l[i].pat === pat || l[i].pat_mini === pat) return l[i]; return null; }
+  function demoUrl(pat) { if (!DEMO || !D) return null; var r = DPR[pat] || (DPR[pat] = demoRow(pat)); return r ? demoPic(r) : null; }
+  function demoBlob(r) { try { return URL.createObjectURL(new Blob([demoSvg(r)], { type: 'image/svg+xml' })); } catch (e) { return ''; } }
 
   // ---------- старт ----------
   // Избор на Таблото: запомнен (първо отваряне — „Всички“); обект на Ден: последният показан. ?obekt= избира и двете и се запомня.
