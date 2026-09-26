@@ -1,0 +1,6 @@
+*.dat
+_vhod/
+*.log
+serve.ps1
+
+.git-staro-predi-izchistvane/

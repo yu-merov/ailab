@@ -1,0 +1,16 @@
+{
+  "name": "AiLab",
+  "short_name": "AiLab",
+  "description": "Командно табло за двата обекта: дневник, задачи, архив.",
+  "lang": "bg",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#6D735D",
+  "theme_color": "#6D735D",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

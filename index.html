@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="bg">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AiLab</title>
+<meta name="theme-color" content="#6D735D">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="AiLab">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=Unbounded:wght@500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" crossorigin>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app" class="app">
+  <div class="topwrap">
+    <header class="top">
+      <div class="brand">AiLab <span class="ver">Етап 2</span><button type="button" class="demo-pill" id="demoPill" data-a="demoSheet" aria-label="Демо режим — панел" hidden>демо</button></div>
+      <button type="button" class="stamp" id="stamp" data-a="refresh" aria-label="Обнови"><span class="dot" aria-hidden="true"></span><span id="stampTxt">…</span></button>
+    </header>
+    <div id="banners" class="banners" aria-live="polite"></div>
+  </div>
+  <main id="screen" class="screen"></main>
+  <section id="tablo" class="screen" aria-label="Табло" hidden></section>
+  <nav id="tabs" class="tabs" aria-label="Раздели" hidden></nav>
+</div>
+<button id="fab" class="fab" type="button" data-a="plus" aria-label="Ново действие: за мен, възложи, напомни ми, среща" hidden>+</button>
+<div id="toasts" class="toasts" role="status" aria-live="polite"></div>
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js" crossorigin="anonymous" integrity="sha384-0w2KAL2YHP6wKOkUDzkCDGgVvfmHnj02DHeQ6XcHOgTfFsGyonKOpShMH1x6nk9o"></script>
+<script src="app.js"></script>
+</body>
+</html>
