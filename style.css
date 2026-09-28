@@ -612,7 +612,7 @@ html[data-fs="xl"] .stat span,html[data-fs="xl"] .stat em{overflow-wrap:anywhere
 .pc-ub{color:var(--mine)!important;padding:0 22px!important;border-left:1px solid var(--line)!important}
 .pc.undoing{border-left-color:var(--ok)}
 .pc.undoing .pc-in{opacity:.45;pointer-events:none}
-.u-bar{position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--ok);transform-origin:left;animation:undoBar 5s linear forwards}
+.u-bar{position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--ok);transform-origin:left;animation:undoBar 2s linear forwards}
 .pc.leaving{overflow:hidden;opacity:0;transition:height .18s ease,opacity .18s ease}
 /* „✓ Видях останалите (N)“ */
 .seen-all{width:100%;min-height:48px}

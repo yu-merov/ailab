@@ -1178,7 +1178,7 @@
   // ---------- 5 с „Отмени“ — общо за Преглед, Табло и Задачи (правило 8: всичко се отменя до 5 с) ----------
   // u = {key, kind: 'pc' (карта в Преглед) | 'grp' („Видях останалите“) | 'dc' (карта на Таблото) | 'toast', lbl, tid,
   //      tbl/row/meta — записът, или run() — само на телефона; pre() — точно преди записа; done(r), fail(e); redo() — „Отмени“ връща листа}
-  var UNDO = {}, UNDO_MS = 5000;
+  var UNDO = {}, UNDO_MS = 2000;   // РП 28.09: 2 с вместо 5 с
   function undoStart(u) {
     if (UNDO[u.key]) undoCommit(u.key);
     u.t0 = Date.now(); u.at = nowIso(); u.qid = newQid();
