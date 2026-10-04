@@ -1,4 +1,4 @@
-/* AiLab · Етап 4 (Преглед и задачи) + Етап 3 (Снимки) + Етап 2 (Табло) + Етап 1 — визуалният език на макет v2: мента = Амур, светло синьо = Скай, сиво = GM;
+/* AiLab · Етап 5 (Присъствия, Интранет, широк екран) + Етап 4 (Преглед и задачи) + Етап 3 (Снимки) + Етап 2 (Табло) + Етап 1 — визуалният език на макет v2: мента = Амур, светло синьо = Скай, сиво = GM;
    кехлибарено = непроверено/застаряло, виолетово = твое, червено = внимание (рядко). */
 :root{
   --ground:#EEF1EC; --surface:#FFFFFF; --surface2:#F5F7F3; --line:#D9DED6; --line2:#BFC7BC;
@@ -808,3 +808,186 @@ div.seen-all .pa{color:var(--mine);padding:0 22px;border-left:1px solid var(--li
 html[data-fs="xl"] .frm-seg.n4{grid-template-columns:repeat(2,1fr)}
 /* написаното в полетата — нормален шрифт (етикетите остават 600) */
 .fld input,.fld textarea,.fld select{font-weight:400;color:var(--ink)}
+
+/* ================= Етап 5: „📘/🚫“ в записа, Присъствия, Интранет, широк екран ================= */
+/* „📄 Пълен запис“: ред с маркер ⟦k⟧ — докосваем (≥ 44 px), без видим знак; „Покажи и изключените“ — задраскани [§6.1] */
+.md-izk{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:2px 10px}
+.md-izk-b{min-height:44px;color:var(--warn-ink)}
+.md-tip{margin:8px 16px 10px}
+.md-err{margin:8px 14px 0}
+.md .mk{cursor:pointer;border-radius:8px;-webkit-tap-highlight-color:transparent}
+.md li.mk,.md p.mk{min-height:44px;padding:11px 0;margin:0}
+.md p.mk{padding-left:4px;padding-right:4px}
+.md tr.mk td{padding-top:12px;padding-bottom:12px}
+.md .mk:active{background:var(--surface2)}
+@media (hover:hover){.md .mk:hover{background:var(--surface2)}}
+.md .md-izk-r{text-decoration:line-through;text-decoration-thickness:1px;color:var(--faint)}
+.md .md-izk-r .ref{opacity:.6}
+/* вписан/одобрен ден: неактивен пил „… · вписан — промяна само с нова версия“; неприложен избор — кехлибарено */
+.pc-dn.lk{white-space:normal;text-align:left;line-height:1.3;padding:6px 12px;cursor:default;background:var(--surface2);color:var(--muted);border-color:var(--line)}
+.pc-dn.lk.off{background:var(--warn-bg);color:var(--warn-ink);border-color:transparent}
+.dn-ne{flex-basis:100%;margin:2px 0;padding:6px 10px;border-radius:10px;background:var(--warn-bg);color:var(--warn-ink);font-size:calc(13px*var(--fs,1));font-weight:600}
+.dn-ne .lnk{color:var(--warn-ink);min-height:28px}
+/* листът „От кои точки е този ред“ */
+.mk-i{display:grid;gap:8px;padding:12px;border-radius:14px;background:var(--surface2);border:1px solid var(--line)}
+.mk-i.izk{border-left:4px solid var(--warn)}
+.mk-i.izk .mk-t{text-decoration:line-through;text-decoration-thickness:1px;opacity:.75}
+.mk-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.mk-t{margin:0;font-size:calc(15px*var(--fs,1));line-height:1.4;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.mk-b{display:flex}
+.mk-b .pc-dn{min-height:44px}
+.mk-ua{position:relative;display:grid;grid-template-columns:1fr auto;align-items:center;min-height:48px;border:1px solid var(--line);border-radius:12px;background:var(--surface);overflow:hidden}
+
+/* Карта „👷 Присъствия“ (Преглед, след резюмето) [§6.3] */
+.pris-w:empty{display:none}
+.pris-c{position:relative;width:100%;display:grid;gap:6px;text-align:left;background:var(--surface);border:1px solid var(--line);border-left:6px solid var(--o);border-radius:16px;padding:12px 40px 12px 14px;box-shadow:var(--sh-soft);color:var(--ink);font:inherit;cursor:pointer;min-height:56px}
+.pris-c:active{background:var(--surface2)}
+.pris-c.none{cursor:default;color:var(--muted);background:var(--surface2);border-left-color:var(--line2);box-shadow:none;padding-right:14px;font-weight:600;font-size:calc(14px*var(--fs,1));align-content:center}
+.pris-1{font-size:calc(15.5px*var(--fs,1));font-weight:600}
+.pris-1 b{font-family:var(--f-disp);font-size:calc(18px*var(--fs,1))}
+.pris-cs{display:flex;flex-wrap:wrap;gap:4px 6px;align-items:center}
+.pris-ch{font-size:calc(12.5px*var(--fs,1));font-weight:600;border-radius:999px;padding:2px 9px;background:var(--o-bg);color:var(--o-ink);white-space:nowrap}
+.pris-ch.more{background:var(--surface2);color:var(--muted)}
+.pris-2{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;font-size:calc(13px*var(--fs,1))}
+.pris-ok{color:var(--ok);font-weight:700}
+.pris-df{color:var(--warn-ink);background:var(--warn-bg);border-radius:8px;padding:1px 8px;font-weight:700}
+.pris-go{position:absolute;right:14px;top:50%;transform:translateY(-50%);font-size:calc(22px*var(--fs,1));color:var(--muted)}
+.pris-t{border-collapse:collapse;width:100%;font-size:calc(14px*var(--fs,1))}
+.pris-t th,.pris-t td{border-bottom:1px solid var(--line);padding:8px 8px 8px 0;text-align:left;vertical-align:top}
+.pris-t th{font-size:calc(12.5px*var(--fs,1));color:var(--muted);font-weight:700}
+.pris-t .n{text-align:right;font-family:var(--f-mono);font-variant-numeric:tabular-nums;padding-right:12px}
+.pris-t tr.nn td{color:var(--muted)}
+
+/* „Хора на обекта“: 30 д · 90 д · Всичко; кух стълб = по черновата; една зона за пръста + „‹ ›“ [§6.3, К19] */
+.hc-ob{display:flex;gap:6px;padding:0 14px;flex-wrap:wrap}
+.hc-ob .chip{min-height:44px;padding:0 14px}
+.hc svg.hc-svg{touch-action:pan-y;cursor:pointer}
+.hc-svg:focus{outline:none}
+.hc-svg:focus-visible{outline:2px solid var(--brand);outline-offset:2px;border-radius:6px}
+.hc-hit{fill:transparent}
+.c-b.hol{fill:none;stroke:var(--o);stroke-width:1.4;opacity:1}
+.c-b.c-ag.hol{fill:none;stroke:var(--ag)} .c-b.c-soft.hol{fill:none;stroke:var(--soft)}
+.c-tick{stroke:var(--line2);stroke-width:1}
+.lg-hol{border:1.5px solid var(--o);background:none!important}
+.hc-nav{display:grid;grid-template-columns:48px minmax(0,1fr) 48px;align-items:center;gap:8px;padding:0 10px}
+.hc-nav:empty{display:none}
+.hc-nb{min-height:44px;border:1px solid var(--line);border-radius:12px;background:var(--surface2);color:var(--ink);font:inherit;font-size:calc(22px*var(--fs,1));line-height:1;cursor:pointer}
+.hc-nb:disabled{opacity:.35;cursor:default}
+.hc-nl{text-align:center;font-weight:700;font-size:calc(14.5px*var(--fs,1));overflow-wrap:anywhere}
+.hc-det{display:grid;gap:10px;padding:0 14px}
+.hc-det:empty{display:none}
+.hc-o{display:grid;gap:6px;justify-items:start}
+.hc-o > *{max-width:100%}
+.hc-o + .hc-o{border-top:1px solid var(--line);padding-top:10px}
+.hc-dl{margin:0;font-size:calc(14.5px*var(--fs,1))}
+.hc-dl b{font-family:var(--f-disp);font-weight:600}
+.hc-dl .ochip{padding:2px 9px;font-size:calc(12.5px*var(--fs,1))}
+.hc-nn{margin:0;font-size:calc(13px*var(--fs,1));color:var(--muted)}
+.hc-dr{margin:0;padding:6px 10px;border-radius:10px;background:var(--warn-bg);color:var(--warn-ink);font-weight:700;font-size:calc(13.5px*var(--fs,1))}
+.hc-cats{display:flex;flex-wrap:wrap;gap:6px;width:100%}
+.hc-cat{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 12px;border:1px solid var(--line);border-radius:999px;background:var(--surface2);color:var(--ink);font:inherit;font-size:calc(13.5px*var(--fs,1));font-weight:600;cursor:pointer;max-width:100%}
+.hc-cat span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hc-cat b{font-family:var(--f-mono)}
+.hc-cat[aria-expanded="true"]{background:var(--o-bg);color:var(--o-ink);border-color:var(--o)}
+.hc-br{list-style:none;margin:0;padding:6px 12px;display:grid;gap:2px;width:100%;border-left:3px solid var(--o);background:var(--surface2);border-radius:0 10px 10px 0}
+.hc-br li{display:flex;justify-content:space-between;gap:10px;font-size:calc(14px*var(--fs,1));padding:5px 0;border-bottom:1px dashed var(--line)}
+.hc-br small{color:var(--muted)}
+.hc-e{margin:0 14px}
+
+/* „Задачи“: превключвател 📌 AiLab · 🗂️ Интранет; изгледът „Интранет“ [§6.4] */
+#zadSw:empty{display:none}
+.zad-sw{display:grid;grid-template-columns:1fr 1fr;gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:4px;box-shadow:var(--sh-soft)}
+.zad-sw button{min-height:48px;border:none;border-radius:12px;background:none;font:inherit;font-weight:700;font-size:calc(14.5px*var(--fs,1));color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;padding:0 6px}
+.zad-sw button[aria-pressed="true"]{background:var(--brand-soft);color:var(--brand);box-shadow:inset 0 0 0 2px var(--brand)}
+.zad-sw .cn{font-family:var(--f-mono);font-size:calc(12px*var(--fs,1));background:var(--warn-strong);color:var(--on-warn);border-radius:999px;padding:0 6px;min-width:20px;line-height:20px;text-align:center}
+.iz-fr{margin:0;padding:8px 12px;border-radius:12px;background:var(--surface2);color:var(--muted);font-size:calc(13.5px*var(--fs,1));font-weight:600}
+.iz-fr.warn{background:var(--warn-bg);color:var(--warn-ink)}
+.iz-off{margin:-6px 0 0}
+.zad-f.iz-o .chip{min-height:40px;padding:0 12px;font-size:calc(13px*var(--fs,1))}
+.chip.amb .cn{color:var(--warn-ink);opacity:1;font-weight:700}
+.chip[aria-pressed="true"].amb .cn{color:inherit}
+.act.iz{border-left-color:var(--o)}
+.act.iz.done{border-left-color:var(--line2)}
+.iz-dot{width:10px;height:10px;border-radius:50%;background:var(--o);flex:none;margin-top:6px}
+.p-blue{background:var(--brand-soft);color:var(--brand)}
+.zd-iz{margin:0;padding:8px 12px;border-radius:12px;background:var(--surface2);font-size:calc(14px*var(--fs,1));overflow-wrap:anywhere}
+
+/* ---------- широк екран: body.wide само при ≥ 1100 px × размера на текста [§6.2, К32]; под прага — нищо от долу ---------- */
+.top-plus{display:none;margin-left:auto;min-height:40px;border:none;border-radius:999px;padding:0 16px;background:var(--brand);color:var(--brand-ink);font:inherit;font-weight:700;font-size:14px;cursor:pointer;align-items:center;white-space:nowrap}
+.tb2,.tb2-l,.tb2-r{display:contents}
+body.wide .app{max-width:none;display:grid;grid-template-columns:minmax(0,1fr) 88px minmax(0,1592px) minmax(0,1fr);grid-template-rows:auto 1fr;grid-template-areas:"top top top top" ". nav main .";align-items:start;min-height:100vh}
+body.wide .app:has(> #tabs[hidden]){grid-template-columns:minmax(0,1fr) minmax(0,1680px) minmax(0,1fr);grid-template-areas:"top top top" ". main ."}
+body.wide .topwrap{grid-area:top}
+body.wide .top{padding-left:24px;padding-right:24px}
+body.wide:has(#fab:not([hidden])) .top-plus{display:inline-flex}
+body.wide .top-plus + .stamp{margin-left:4px}
+body.wide #screen,body.wide #tablo{grid-area:main;padding:20px 24px 48px;min-width:0}
+body.wide .tabs{grid-area:nav;position:sticky;top:var(--tw,64px);left:auto;bottom:auto;transform:none;width:88px;height:calc(100vh - var(--tw,64px));grid-template-columns:none;grid-auto-rows:min-content;align-content:start;gap:6px;padding:14px 6px;border-top:none;border-right:1px solid var(--line);background:var(--surface);-webkit-backdrop-filter:none;backdrop-filter:none;z-index:5}
+body.wide .tab{min-height:68px;border-radius:14px}
+body.wide .tab[aria-current="page"]::before{top:22%;bottom:22%;left:-6px;right:auto;width:3px;height:auto;border-radius:0 3px 3px 0}
+@media (hover:hover){body.wide .tab:hover{background:var(--surface2)}}
+body.wide .fab{display:none!important}
+/* листовете — прозорец в средата; тостовете — долу в средата */
+body.wide .scrim{align-items:center;padding:24px}
+body.wide .sheet{max-width:600px;max-height:86vh;border-radius:22px;padding-bottom:18px;animation:fadeIn .16s ease-out}
+body.wide .sheet .sh-save{bottom:-18px;padding-bottom:18px;margin-bottom:-18px;border-radius:0 0 22px 22px}
+body.wide .toasts{bottom:24px}
+body.wide .appr-w.sticky{bottom:16px;margin-right:0}
+/* Преглед: дните · денят · избраната точка */
+.pv3{display:grid;grid-template-columns:200px minmax(420px,820px) clamp(320px,28vw,440px);gap:20px;align-items:start;justify-content:center}
+.pv3-d,.pv3-p{position:sticky;top:calc(var(--tw,64px) + 16px);max-height:calc(100vh - var(--tw,64px) - 32px);overflow:auto;overscroll-behavior:contain;min-width:0}
+.pv3-m{display:flex;flex-direction:column;gap:14px;min-width:0}
+.pv3-m > *{flex-shrink:0;min-width:0}
+.pv3-d{display:grid;gap:8px;align-content:start;padding:2px 6px 8px 2px}
+.dl-h{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.dl{display:grid;gap:5px}
+.dl-m{position:sticky;top:0;z-index:1;background:var(--ground);font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding:8px 4px 3px}
+.dl-i{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:1px 6px;align-items:center;width:100%;min-height:52px;padding:6px 10px;border:1.5px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);font:inherit;text-align:left;cursor:pointer}
+.dl-i.st-ch{border-color:var(--o);border-style:dashed}
+.dl-i.st-od{background:var(--o-bg);border-color:var(--o);border-style:dashed;color:var(--o-ink)}
+.dl-i.st-vp{background:var(--o-bg);border-color:transparent;color:var(--o-ink)}
+.dl-i.sel{outline:3px solid var(--brand);outline-offset:1px}
+.dl-d{font-size:14px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.dl-s{grid-column:1;font-size:12px;font-weight:600;color:var(--muted);display:flex;align-items:center;gap:4px}
+.dl-i.st-vp .dl-s,.dl-i.st-od .dl-s{color:inherit;opacity:.85}
+.dl-s .cnt{min-width:19px;height:19px;font-size:11px}
+.dl-p{grid-column:2;grid-row:1 / span 2;font-family:var(--f-mono);font-size:12.5px;font-weight:600;color:var(--muted);white-space:nowrap}
+.dl-i.st-vp .dl-p,.dl-i.st-od .dl-p{color:inherit}
+.pv3-d .legend{display:grid;gap:4px;padding:6px 2px}
+.pv3-p{display:grid;gap:12px;align-content:start;padding:2px 4px 12px 2px}
+.pan-c{display:grid;gap:10px;background:var(--surface);border:1px solid var(--line);border-left:5px solid var(--c,var(--o));border-radius:16px;padding:12px 14px;box-shadow:var(--sh-soft)}
+.pan-h{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.pan-l{font-size:12.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.pan-g{font-size:12.5px;font-weight:700;color:var(--muted)}
+.pan-t{display:flex;gap:10px;align-items:flex-start}
+.pan-t p{margin:0;font-size:calc(16px*var(--fs,1));line-height:1.45;overflow-wrap:anywhere}
+.pan-p{display:flex;flex-wrap:wrap;gap:6px}
+#panPh:empty{display:none}
+.pan-phh{font-size:13px;font-weight:700;color:var(--muted);margin-bottom:6px}
+.pan-s{margin:4px 0 0;font-family:var(--f-ui);font-size:calc(14.5px*var(--fs,1));font-weight:700}
+.pan-src{display:grid;gap:10px}
+.pc.sel{box-shadow:0 0 0 2px var(--brand),var(--sh-soft)}
+body.wide .pc[data-a="pcSel"]{cursor:pointer}
+body.wide .md li.mk,body.wide .md p.mk{position:relative;padding-right:22px}
+body.wide .md li.mk::after,body.wide .md p.mk::after{content:"›";position:absolute;right:6px;top:50%;transform:translateY(-50%);color:var(--faint);font-weight:700}
+body.wide .md tr.mk td:last-child{position:relative;padding-right:22px}
+body.wide .md tr.mk td:last-child::after{content:"›";position:absolute;right:6px;top:50%;transform:translateY(-50%);color:var(--faint);font-weight:700}
+/* Табло: горе — на цялата ширина; ляво (лепкаво) — решенията и хората; дясно — потокът (скролва страницата) */
+body.wide #tablo > :not(.new-pill){width:100%;max-width:1500px;margin-left:auto;margin-right:auto}
+body.wide .tb2{display:grid;grid-template-columns:minmax(440px,600px) minmax(480px,1fr);gap:20px;align-items:start}
+body.wide .tb2-l{display:flex;flex-direction:column;gap:14px;position:sticky;top:calc(var(--tw,64px) + 16px);max-height:calc(100vh - var(--tw,64px) - 32px);overflow:auto;overscroll-behavior:contain;padding:2px 6px 8px 2px;min-width:0}
+body.wide .tb2-r{display:flex;flex-direction:column;gap:14px;min-width:0}
+body.wide .tb2-l > *,body.wide .tb2-r > *{flex-shrink:0;min-width:0}
+/* Задачи: списъкът · панелът с избраната задача */
+body.wide[data-v="deistviq"] #screen > *{width:100%;max-width:1500px;margin-left:auto;margin-right:auto}
+.zad2{display:grid;grid-template-columns:minmax(440px,1fr) clamp(380px,34vw,560px);gap:20px;align-items:start}
+.zpan{position:sticky;top:calc(var(--tw,64px) + 16px);max-height:calc(100vh - var(--tw,64px) - 32px);overflow:auto;overscroll-behavior:contain;display:grid;gap:12px;align-content:start;background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:16px;box-shadow:var(--shadow);min-width:0}
+.zpan-h{font-weight:700;font-size:calc(16px*var(--fs,1));padding-bottom:8px;border-bottom:1px solid var(--line)}
+body.wide #zad .act.sel{box-shadow:0 0 0 2px var(--brand)}
+/* Настройки (и входът) — една колона в средата */
+body.wide[data-v="nastroiki"] #screen,body.wide[data-v="login"] #screen,body.wide[data-v="setup"] #screen,body.wide[data-v="karti"] #screen,body.wide[data-v="nonet"] #screen{width:100%;max-width:720px;margin-left:auto;margin-right:auto}
+.c-val{paint-order:stroke;stroke:var(--surface);stroke-width:3px;stroke-linejoin:round}
+.c-day.yr{fill:var(--ink);font-weight:700}
+/* 1100–1279 px: по-тесни полета и разстояния — трите колони на Преглед се събират без хоризонтален скрол [К32] */
+@media (max-width:1279px){body.wide #screen,body.wide #tablo{padding-left:14px;padding-right:14px}.pv3{gap:12px}body.wide .tb2,.zad2{gap:14px}}
+.appr-iz{font-size:calc(12.5px*var(--fs,1));font-weight:700;color:var(--warn-ink);text-align:center;line-height:1.3}
