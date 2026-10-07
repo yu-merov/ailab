@@ -1073,7 +1073,8 @@
     var q = queue(), m = mine(t.id, q), hot = (t.vajnost || 1) >= 3, ist = ISTINA[t.istina] || ISTINA.saobshteno, izv = t.izvori || [];
     var lk = locked(), res = t.grupa === 'reshenie', u = UNDO['pc:' + t.id], tid = esc(t.id), err = errOf(t.id, q);
     var ph = tPhotos(t), ts = tasksOf(t.id, q), wp = res ? waitPill(S.den ? S.den.data : '') : null;
-    var vd0 = vDn(t, q), dnB = dnBtn(t, vd0, lk), wsel = WIDE && view === 'day';
+    // долу в реда с етикетите: заключен ден / ред без номер → старият пил; иначе само състоянието „🚫 няма да влезе“ (бутонът е в реда с действията)
+    var vd0 = vDn(t, q), dnB = (lk || dnBezRed(t)) ? dnBtn(t, vd0, lk) : (vd0 ? '' : '<span class="pill p-izk">🚫 няма да влезе в дневника</span>'), wsel = WIDE && view === 'day';
     var head = rv ? '<button type="button" class="rev-r on" data-a="revCard" data-tid="' + tid + '" aria-expanded="true"><span class="rev-i" aria-hidden="true">' + revInfo(t, q).ico + '</span>' +
       '<span class="rev-t">' + esc(revInfo(t, q).st) + '</span><span class="chev" aria-hidden="true">▴</span></button>' : '';
     var b1;
@@ -1109,7 +1110,10 @@
       (u ? '<div class="pc-a pc-ua"><span class="pc-u">' + esc(u.lbl) + '</span><button type="button" class="pa pc-ub" data-a="undo" data-k="pc:' + tid + '">Отмени</button><i class="u-bar" data-ub="pc:' + tid + '" aria-hidden="true"></i></div>'
         : '<div class="pc-a">' + b1 +
           '<button type="button" class="pa" data-a="fix" data-tid="' + tid + '">✎ Поясни</button>' +
-          '<button type="button" class="pa" data-a="act" data-tid="' + tid + '">→ Задача</button></div>') + '</article>';
+          '<button type="button" class="pa" data-a="act" data-tid="' + tid + '">→ Задача</button>' +
+          // 07.10: ясен бутон на свой ред (сивият пил долу не се разпознаваше като бутон)
+          (!lk && dnMozhe(t) ? '<button type="button" class="pa pa-dn' + (vd0 ? '' : ' off') + '" data-a="dn" data-tid="' + tid + '" aria-pressed="' + !vd0 + '">' + (vd0 ? '🚫 Не включвай в дневника' : '📘 Върни в дневника') + '</button>' : '') +
+          '</div>') + '</article>';
   }
   function rerenderCard(tid) { keepAnchor(function () { renderGroups(); }); }
   // Пише в контейнера само ако HTML-ът се е сменил — проверката на 20 с не бива да подменя бутон под пръста.
@@ -5212,7 +5216,7 @@
       '<div class="nas-r2">Задачите: лаптопът ги обработи последно ' + (az ? '<b>' + esc(rel(az)) + '</b>' : '<span class="muted">— (още не)</span>') + '</div>' +
       '<div class="nas-r2' + (spOld ? ' amber' : '') + '">Списъкът с хора от Интранета: ' + (sp ? 'от <b>' + esc(rel(sp)) + '</b>' + (spOld ? ' — по-стар от 30 дни' : '') : '<span class="muted">' + (SPL.st === 'missing' ? 'още не е качен (лаптопът)' : 'още не е зареден') + '</span>') + '</div>');
     h += nsCard('Място за снимки', '', mqHtml());
-    h += nsCard('Версия и данни', '', '<ul class="nas-v"><li>AiLab · Етап 5 · кеш ailab-e5-v2</li><li>Данни към ' + esc(TB.at ? rel(TB.at) : '—') + '</li><li>Чакат връзка: ' + pendingCount() + '</li>' +
+    h += nsCard('Версия и данни', '', '<ul class="nas-v"><li>AiLab · Етап 5.1 (07.10) · кеш ailab-e5-v3</li><li>Данни към ' + esc(TB.at ? rel(TB.at) : '—') + '</li><li>Чакат връзка: ' + pendingCount() + '</li>' +
       '<li>' + (isStandalone() ? 'Инсталирано като иконка ✓' : 'Съвет: в Safari натисни <b>Сподели ⬆</b> → <b>Добави към началния екран</b>.') + '</li></ul>');
     h += nsCard('Още', '', '<div class="nas-b">' + (DEMO ? '' : '<button class="btn ghost" type="button" data-a="karti">🔎 Карти и търсене (Етап 0)</button>') + (DEMO ? demoPanel() : '') +
       (DEMO ? '<a class="btn ghost" href="./">Изход от демото</a>' : '<button class="btn ghost" type="button" data-a="logout">Изход</button>') + '</div>');
