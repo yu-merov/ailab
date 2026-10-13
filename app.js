@@ -1,3 +1,5 @@
+// AiLab · Етап 6 (tools\ETAP6-SPEC.md, ЧАСТ А) — „🗂️ Източниците на деня“, връзките между източниците, „✉ Питай по мейл“, 🚫 в Табло,
+// без чакане след действие (лентата „Отмени“), свежест по графика, „📄 Пълен запис“ = Word, „📥 Днес досега“. Върху Етап 5.2 (F11, §5.10).
 // AiLab · Етап 5 — Присъствия (графика 30 д / 90 д / Всичко, карта „👷 Присъствия“), Интранетът в „Задачи“, „📘/🚫“ и в
 // „Пълен запис“ (фактите), широк екран ≥ 1100 px (Преглед 3 колони, Табло 2, Задачи 2). ETAP5-SPEC.md §6.
 // Върху Етап 4 („Преглед и задачи“: 4 таба, подредба, „✎ Поясни“, източници, задачи с полетата на Интранета), Етап 3 („Снимки“),
@@ -42,9 +44,11 @@
   var RESH_OT = DEMO ? '2026-09-01' : '2026-09-16';
   // Таблото: TB (не T — T е локална функция в демото, T0 — часовникът). Отворени решения и поток — по избор (TB.S.ag|soft|all).
   var TB = { sel: 'all', at: '', tok: 0, busy: 0, okAt: 0, hasBase: false, baseErr: null, dni: [], soon: [], odobri: [], closed: {}, inflight: {},
-    S: {}, chart: { sel: null, anim: true, cat: null, geo: null }, defer: {}, scrollY: 0, shownAt: 0, measured: false, seenBase: '', built: false, io: null, cardSeen: {}, feedOt: {} };
+    S: {}, chart: { sel: null, anim: true, cat: null, geo: null }, defer: {}, scrollY: 0, shownAt: 0, measured: false, seenBase: '', built: false, io: null, cardSeen: {}, feedOt: {}, zap: {}, zapAsk: {} };
   // Етап 5: новите ключове в localStorage (lget/lset добавят „_demo“ в демото); „Изход“ ги трие [§6.6]
   var K5 = { hora: 'ailab_e5_hora', obh: 'ailab_e5_hora_obhvat', iz: 'ailab_e5_intranet', izg: 'ailab_e5_zad_izgled' };
+  // Етап 6: филтърът в „Източниците на деня“ и „Това съм аз“ (адресите на РП) — с „_demo“ в демото; „Изход“ ги трие [ETAP6 §5.12]
+  var K6 = { iztF: 'ailab_e6_izt_f', az: 'ailab_e6_az_mail' };
   // Широк екран [§6.2, К32]: ≥ 1100 px × размера на текста → body.wide; под прага DOM-ът и CSS-ът са както досега
   var WIDE = false, WIDE_MQ = null;
 
@@ -171,15 +175,19 @@
   var TEST_DO = '2001-01-01';   // тестовите дни на пробата (2000-01-01) не се показват
   var CLOSE_VID = { potvardi: 1, popravka: 1, osporva: 1, komentar: 1 };   // тези решения затварят точка „за решение“
   var ANSW = { potvardi: 1, popravka: 1, komentar: 1 };                     // „чака отговор“: точката има мой отговор (✓, поправка, разяснение)
-  var OPEN_SEL = 'id,den_id,razdel,tekst,istina,vajnost,izvori,red,dni!inner(obekt,data,status,versiq,hesh,obnoven),resheniq(id),deistviq(id,status)';
+  // Етап 6 [§5.1]: + k, v_dnevnika — за „🚫 Не включвай“ в Табло (zapis_md НЕ — тегли се отделно с tZap); без колоните → старата заявка
+  var OPEN_SEL = 'id,den_id,razdel,tekst,istina,vajnost,izvori,red,k,v_dnevnika,dni!inner(obekt,data,status,versiq,hesh,obnoven),resheniq(id),deistviq(id,status)';
+  var OPEN_SEL0 = 'id,den_id,razdel,tekst,istina,vajnost,izvori,red,dni!inner(obekt,data,status,versiq,hesh,obnoven),resheniq(id),deistviq(id,status)';
+  var E6 = { open: true };   // false → tochki.k/v_dnevnika ги няма (42703): заявка 2 минава на старите колони
   var FEED_COLS = 'id,den_id,razdel,tekst,istina,vajnost,izvori,red';
   var ACT_COLS = 'id,den_id,tochka_id,vid,tekst,chovek,mqsto,srok,izvor,status,sazdadeno,obnoveno';
   var ACT_E4 = ',obekt,cel,danni,razqsnenie,zamenq,belejka,vanshen_id,vanshen_url,klient_id,opit';   // колоните от 005_etap4.sql
   var SOON_MAX = 50;   // таван на заявка 4
   // „Отворена задача“ (броячи, срокове) и „Чака теб“ [§2.1.2]; телефонът показва думите само от ST [К33]
-  var OTV = ['zaqveno', 'dopalni', 'chaka_reshenie', 'chaka_razreshenie', 'vpisano'];
+  // Етап 6: + chaka_otgovor — „✉ чака отговор“ (питане по мейл; сменя го само лаптопът) [§2.3, §5.1]
+  var OTV = ['zaqveno', 'dopalni', 'chaka_reshenie', 'chaka_razreshenie', 'vpisano', 'chaka_otgovor'];
   var CHAKA_TEB = ['dopalni', 'greshka'];
-  var CLOSES_DEI = ['zaqveno', 'dopalni', 'chaka_reshenie', 'chaka_razreshenie', 'vpisano', 'izpalneno', 'greshka'];   // затварят решение (без otmeneno) [К11]
+  var CLOSES_DEI = ['zaqveno', 'dopalni', 'chaka_reshenie', 'chaka_razreshenie', 'vpisano', 'izpalneno', 'greshka', 'chaka_otgovor'];   // затварят решение (без otmeneno) [К11]
   var BEL_COLS = 'id,deistvie_id,vid,tekst,kogda,obraboteno,rezultat,klient_id';
   var SAOB_COLS = 'id,den_id,data,kluch,vid,vreme,avtor,izvor_vid,izvor,tema,otgovor,do_kopie,tekst,link,snimki_broi,failove,original_url,belejka';
   var SP_COLS = 'vid,stoinost,ime,grupa,obekt,red,skrit,aktiven,obnoveno';
@@ -253,9 +261,17 @@
     tDni: function () { return R(function () { return db.from('dni').select('id,obekt,data,status,versiq,hora,obnoven').gte('data', TEST_DO).order('data', { ascending: false }).order('obekt').limit(400).abortSignal(tsig()); }); },
     // заявка 2: отворените решения с една заявка (анти-съединение в PostgREST) + общият брой
     tOpen: function (sel, rg, old) {
+      var self = this;
+      return self.tOpen1(sel, rg, old, E6.open ? OPEN_SEL : OPEN_SEL0).then(null, function (e) {
+        if (!E6.open || !isNoCol(e)) throw e;
+        E6.open = false;   // преди колоните k/v_dnevnika — тихо старата заявка (без 🚫 в Табло)
+        return self.tOpen1(sel, rg, old, OPEN_SEL0);
+      });
+    },
+    tOpen1: function (sel, rg, old, cols) {
       return RC(function () {
         // отменена задача не затваря решението [К11]: анти-съединението брои само задачи в другите състояния
-        var q = db.from('tochki').select(OPEN_SEL, { count: 'exact' }).eq('grupa', 'reshenie')
+        var q = db.from('tochki').select(cols, { count: 'exact' }).eq('grupa', 'reshenie')
           .in('resheniq.vid', ['potvardi', 'popravka', 'osporva', 'komentar']).is('resheniq', null)
           .in('deistviq.status', CLOSES_DEI).is('deistviq', null);
         q = old ? q.lt('dni.data', RESH_OT).gte('dni.data', TEST_DO) : q.gte('dni.data', RESH_OT);
@@ -298,7 +314,32 @@
     // разбивката на един ден — само при показване/тап [§6.3]
     prisDen: function (o, d) { return R(function () { return db.from('prisystvie').select('obekt,data,po_brigadi,obshto,neto,obnoveno_v').eq('obekt', o).eq('data', d).eq('v_izvora', true).limit(1).abortSignal(tsig()); }).then(function (r) { return Array.isArray(r) ? r[0] || null : r; }); },
     // Интранетът: задачите в списъка на РП — страница rg [§6.4, К4]
-    izad: function (rg) { return R(function () { return db.from('intranet_zadachi').select(IZ_COLS).eq('v_spisaka', true).order('tid', { ascending: true }).range(rg[0], rg[1]).abortSignal(tsig()); }); }
+    izad: function (rg) { return R(function () { return db.from('intranet_zadachi').select(IZ_COLS).eq('v_spisaka', true).order('tid', { ascending: true }).range(rg[0], rg[1]).abortSignal(tsig()); }); },
+    // ---- Етап 6 (009_etap6.sql): само SELECT; без таблицата/изгледа → тихо „още не е в облака“ [ETAP6 §5.1] ----
+    // „Източниците на деня“: ключовете на деня — броевете в заглавията и „неизползвани“ (една малка заявка при отваряне на деня)
+    saobDenK: function (den) { return R(function () { return db.from('saobshteniq').select('id,kluch,vid,vreme').eq('den_id', den).order('vreme').order('id').limit(1000).abortSignal(tsig()); }); },
+    // целите редове — по 30, при разгъване (по ид: „Неизползвани“ и „Всички“ теглят точно показаните)
+    saobDen: function (den, vid, rg) { return R(function () { return db.from('saobshteniq').select(SAOB_COLS).eq('den_id', den).eq('vid', vid).order('vreme').order('id').range(rg[0], rg[1]).abortSignal(tsig()); }); },
+    saobIds: function (ids) {
+      if (!ids.length) return Promise.resolve([]);
+      return R(function () { return db.from('saobshteniq').select(SAOB_COLS).in('id', ids).order('vreme').order('id').limit(60).abortSignal(tsig()); });
+    },
+    // F12 [§5.14]: съобщенията на днешния ден преди черновата — по (обект, дата), без den_id (2.7)
+    saobDnesK: function (o, data) { return R(function () { return db.from('saobshteniq').select('id,kluch,vid,vreme').eq('obekt', o).eq('data', data).is('den_id', null).order('vreme').order('id').limit(1000).abortSignal(tsig()); }); },
+    // движението в Интранета за деня (пише го само лаптопът) [§2.1]
+    dvizh: function (o, data) {
+      return R(function () {
+        return db.from('intranet_dvizhenie').select('id,tid,obekt,vid,staro,novo,opisanie,otgovornik,srok,status,data_sabitie,tochnost,okno_ot,okno_do')
+          .eq('data_sabitie', data).eq('obekt', o).order('okno_do').order('id').limit(200).abortSignal(tsig());
+      });
+    },
+    // адресната книга от архива — само в паметта, веднъж на сесия, при първото „✉ Питай“ [§2.4]
+    adresi: function () { return R(function () { return db.from('adresnik').select('adres,ime,broi,posledno').order('broi', { ascending: false }).limit(1000).abortSignal(tsig()); }); },
+    // записът на видимите дни (≤ 10) — кои ⟦k⟧ имат свой ред (за 🚫 в Табло) [§5.5]
+    tZap: function (ids) {
+      if (!ids.length) return Promise.resolve([]);
+      return R(function () { return db.from('dni').select('id,zapis_md').in('id', ids.slice(0, 10)).abortSignal(tsig()); });
+    }
   };
   // Всички страници по 1000 реда, докато дойде непълна [К4]
   var PAGE = 1000;
@@ -326,14 +367,31 @@
   // Ключът на натискането [К1]: всеки ред към resheniq/deistviq/deistviq_bel носи klient_id = qid (същият при всеки повторен опит)
   // → изгубен отговор + повторно изпращане дава 23505 („вече е там“), а не втори ред / втора задача в Интранета.
   var KID_T = { resheniq: 1, deistviq: 1, deistviq_bel: 1 };
-  function enqueue(tbl, row, meta, at, qid) {
+  // hold (Етап 6, §5.6): записът влиза в опашката ВЕДНАГА, но „задържан“ (hold = кога е задържан, ≠ 0) — броячите, групите,
+  // Табло и „Одобрявам“ го виждат като направен от първия миг; тръгва чак от undoCommit(). Опашката е JSON → никога Infinity.
+  function enqueue(tbl, row, meta, at, qid, hold) {
     qid = qid || newQid();
     if (KID_T[tbl] && row && row.klient_id == null && /^[0-9a-z]{8,40}$/.test(qid)) row = Object.assign({}, row, { klient_id: qid });
     var it = { qid: qid, tbl: tbl, row: row, at: at || nowIso(), tt: (meta && meta.tt) || null };
+    if (meta && meta.kind) it.kind = meta.kind;
+    if (hold) it.hold = Date.now();
     var q = queue(); q.push(it); setQueue(q); renderBanners();
     return it;
   }
-  function pendingCount() { return liveQ().filter(function (it) { return it.tbl !== 'metriki'; }).length; }
+  function isHeld(it) { return !!(it && it.hold); }
+  // задържаният НЕ е „чака връзка“: горната лента, Настройки и ⏳ по картите го прескачат [§5.6 т.3]
+  function pendingCount() { return liveQ().filter(function (it) { return it.tbl !== 'metriki' && !isHeld(it); }).length; }
+  // Задържан от затворен прозорец на AiLab (убит насред 5-те с) → пуска се, щом е по-стар от 10 мин; своите (в UNDO) — никога [§5.6 т.9]
+  function heldOrphans() {
+    var own = {}, ch = false, n = Date.now();
+    Object.keys(UNDO).forEach(function (k) { if (UNDO[k].qid) own[UNDO[k].qid] = 1; });
+    var q = queue().map(function (it) {
+      if (!isHeld(it) || own[it.qid] || n - it.hold <= 600000) return it;
+      ch = true; var x = Object.assign({}, it); delete x.hold; delete x.pauza; return x;
+    });
+    if (ch) setQueue(q);
+    return ch;
+  }
   // Чакалият запис носи часа на натискане, не часа на връзката (одобрено в 21:10 без покритие ≠ одобрено в 07:40).
   function stampRow(it) {
     var r = Object.assign({}, it.row), col = it.tbl === 'deistviq' ? 'sazdadeno' : 'kogda';
@@ -372,6 +430,8 @@
       if (f) return insertFk(tbl, f, tt, n + 1);
       if (tbl === 'deistviq_bel' && isMissing(e)) e.bg = 'базата още не е готова за „Готово / Отмени / Бележка“ — лаптопът я обновява';
       else if (tbl === 'deistviq' && e && e.code === '23514' && /deistviq_(vid|status)_check/.test(e.message || '')) e.bg = 'базата още не приема този вид задача — лаптопът я обновява';
+      // преди 009_etap6.sql: „➕ Включи в дневника“ (vid dobavi) още не се приема [ETAP6 §2.2]
+      else if (tbl === 'resheniq' && e && e.code === '23514' && /resheniq_(vid|dobavi)_check/.test(e.message || '')) e.bg = 'базата още не приема „➕ Включи в дневника“ — лаптопът я обновява';
       throw e;
     });
   }
@@ -395,6 +455,7 @@
   var FL = { net: false };
   function send(tbl, row, meta, o) {
     o = o || {};
+    commitUndos();   // §5.6 т.8: чакащото „Отмени“ тръгва първо — редът в опашката се пази [К2], flush не спира на задържан ред
     var it = enqueue(tbl, row, meta, o.at, o.qid);
     if (S.forceOff || !navigator.onLine || (!DEMO && (!db || !user))) return Promise.resolve('queued');
     FL.net = false;
@@ -410,9 +471,12 @@
     });
   }
   var flushing = null;
+  // Праща по реда и СПИРА на първия задържан (hold) — него го пуска само undoCommit() [§5.6 т.2]
   function flush(silent) {
     if (flushing) return flushing;
-    if (!liveQ().length || S.forceOff || !navigator.onLine || (!DEMO && (!db || !user))) return Promise.resolve();
+    heldOrphans();
+    var lq = liveQ();
+    if (!lq.length || isHeld(lq[0]) || S.forceOff || !navigator.onLine || (!DEMO && (!db || !user))) return Promise.resolve();
     flushing = new Promise(function (done) {
       var sent = 0, bad = 0;
       function fin() {
@@ -424,7 +488,7 @@
         renderBanners(); done();
       }
       (function next() {
-        var it = liveQ()[0]; if (!it) { fin(); return; }
+        var it = liveQ()[0]; if (!it || isHeld(it)) { fin(); return; }
         insertFk(it.tbl, stampRow(it), it.tt).then(function (r2) {
           dropQ(it.qid);
           if (it.tbl !== 'metriki') { sent++; afterSent(it, r2); }   // мерането не се брои в „N чакат връзка“
@@ -703,13 +767,15 @@
     });
     if (dnL) o.dn = dnL.vid === 'vkljuchi';
     if (dnLast && dnNeOf(dnLast.rezultat)) o.dnNe = { vid: dnLast.vid, why: dnNeOf(dnLast.rezultat) };
+    // задържаният (5-те с „Отмени“) е направен, НЕ „чака връзка“ — без ⏳ [§5.6 т.3]
     (q || queue()).forEach(function (it) {
       if (it.tbl !== 'resheniq' || it.row.tochka_id !== tid) return;
+      var pd = !isHeld(it);
       if (it.err) o.err = true;
-      if (it.row.vid === 'potvardi' && !it.err) o.ok = { at: it.at, pend: true, otg: it.row.tekst === 'отговорено' };
+      if (it.row.vid === 'potvardi' && !it.err) o.ok = { at: it.at, pend: pd, otg: it.row.tekst === 'отговорено' };
       if (it.row.vid === 'potvardi' && it.err) bad = true;
-      if (it.row.vid === 'popravka') o.fix.push({ tekst: it.row.tekst, at: it.at, pend: true, err: it.err || '' });
-      if (it.row.vid === 'komentar') o.kom.push({ tekst: it.row.tekst, at: it.at, pend: true, err: it.err || '' });
+      if (it.row.vid === 'popravka') o.fix.push({ tekst: it.row.tekst, at: it.at, pend: pd, err: it.err || '' });
+      if (it.row.vid === 'komentar') o.kom.push({ tekst: it.row.tekst, at: it.at, pend: pd, err: it.err || '' });
       if ((it.row.vid === 'izkljuchi' || it.row.vid === 'vkljuchi') && !it.err) { o.dn = it.row.vid === 'vkljuchi'; o.dnNe = null; }
     });
     // отговорено от Таблото, докато денят тук е от по-старо зареждане (или от кеша) [К23]
@@ -754,7 +820,7 @@
   // Задачите към точка (базата + опашката, без отказаните); отменените се връщат отделно — те вече не затварят точката [К11]
   function tasksOf(tid, q) {
     var out = [];
-    (q || queue()).forEach(function (it) { if (it.tbl === 'deistviq' && it.row.tochka_id === tid && !it.err) out.push(Object.assign({ _pend: true, _qid: it.qid, sazdadeno: it.at, id: 'q' + it.qid, status: 'zaqveno' }, it.row)); });
+    (q || queue()).forEach(function (it) { if (it.tbl === 'deistviq' && it.row.tochka_id === tid && !it.err) out.push(Object.assign({ _pend: !isHeld(it), _held: isHeld(it), _qid: it.qid, sazdadeno: it.at, id: 'q' + it.qid, status: 'zaqveno' }, it.row)); });
     S.deistviq.forEach(function (a) { if (a.tochka_id === tid && !out.some(function (x) { return x.klient_id && x.klient_id === a.klient_id; })) out.push(a); });
     return out;
   }
@@ -772,18 +838,22 @@
     if (t.grupa !== 'reshenie' && S.den && vidOf(S.den.id, t.id)) return true;
     return false;
   }
+  // Етап 6: действието се вижда ВЕДНАГА — задържаният запис е в опашката, mine()/tasksOf() го виждат → картата вече е прегледана;
+  // undoing(t) е истина, докато „Отмени“ е в лентата долу (само за сведение) [§5.6 т.11]
   function undoing(t) { return !!UNDO['pc:' + t.id]; }
   // „остават N“ — непрегледаните във всичките три групи (плочките, „Следващ ›“); различно от „чакат отговор“ [К25]
-  function ostavat(list, q) { q = q || queue(); return list.filter(function (t) { return !pregledana(t, q) && !undoing(t); }).length; }
+  function ostavat(list, q) { q = q || queue(); return list.filter(function (t) { return !pregledana(t, q); }).length; }
   var EMO = [
     [/няма данни|без данни/i, '⚠️'], [/достав|камион|пристига/i, '🚚'], [/кофражист|души|хора|работниц|присъстви/i, '👷'],
     [/акт\s*(№\s*)?\d|актове|чертеж|протокол|документ|писмо|разрешени|заповед/i, '📄'], [/фактур|плащан|оферт|\d\s*(лв|€)|евро/i, '💶'],
     [/кофраж/i, '🪵'], [/армир|арматур/i, '🔩'], [/бетон|кубчет|проби|mpa/i, '🧪'], [/зида|тухл|клинкер/i, '🧱'], [/снимк/i, '📸'], [/напомн/i, '🔔']
   ];
-  // Имената на 12-те раздела на дневника и емотиконът на всеки (когато думите в текста не подскажат друг).
-  var RAZDELI = ['Управленско резюме', 'Метео', 'Работна ръка', 'Извършени работи', 'Доставки и материали', 'Механизация',
-    'Задачи и решения', 'Проблеми и рискове', 'Качество и проби', 'Документи и кореспонденция', 'За потвърждение', 'Източници и статус'];
-  var RAZ_EMO = ['📋', '🌡️', '👷', '🏗️', '🚚', '⚙️', '📌', '⚠️', '🧪', '📄', '❓', '🗂️'];
+  // Имената на 12-те раздела на дневника — точно като в CHERNOVA-INSTRUKCII.md — и емотиконът на всеки по смисъл
+  // (когато думите в текста не подскажат друг) [ETAP6 §5.1]
+  var RAZDELI = ['Управленско резюме', 'Метеорологични и площадкови условия', 'Работна сила', 'Изпълнени дейности', 'Качество, приемания и бележки',
+    'Доставки и материали', 'Задачи и срокове', 'Проблеми и отворени въпроси', 'Важна информация за ръководството', 'План за следващия ден',
+    'Данни за потвърждение', 'Източници и статус'];
+  var RAZ_EMO = ['📋', '🌡️', '👷', '🏗️', '🧪', '🚚', '📌', '⚠️', '❗', '📅', '❓', '🗂️'];
   // Един смисъл = един емотикон навсякъде (Табло И Ден) [К6]: първо думите от EMO, после разделът.
   function emoT(t) {
     var s = t.tekst || '';
@@ -793,8 +863,28 @@
   var ISTINA = { saobshteno: ['съобщено', 'p-neutral'], provereno: ['✅ проверено', 'p-ok'], osporeno: ['оспорено', 'p-bad'] };
   var IZ = { teams: ['Тиймс', '💬'], poshta: ['Поща', '✉️'], prisystvia: ['Присъствия', '👷'], intranet: ['Интранет', '🗂️'], server: ['Сървър', '🗄️'], laptop: ['Лаптоп', '💻'] };
   var IZ_RED = ['teams', 'poshta', 'prisystvia', 'intranet', 'server', 'laptop'];
-  var TIP_EMO = { 'тиймс': '💬', 'поща': '✉️', 'присъствия': '👷', 'интранет': '🗂️', 'снимка': '📸', 'сървър': '🗄️', 'метео': '🌡️' };
-  function tipEmo(tip) { return TIP_EMO[String(tip || '').toLowerCase()] || '📄'; }
+  // Каналът на източник по истинските tip („Тиймс чат“, „Тиймс канал“, „Мейл“, „Протокол“, „Присъствия“, „Интранет“) [ETAP6 §5.3]:
+  // чат + канал = един канал (Тиймс); всичко друго — файл
+  function kanalOf(tip) {
+    var s = String(tip || '').trim();
+    return /^тиймс/i.test(s) ? 'teams' : /^(мейл|поща)/i.test(s) ? 'mail' : /^интранет/i.test(s) ? 'intranet' : /^присъствия/i.test(s) ? 'pris' : 'file';
+  }
+  var KANAL = { teams: ['💬', 'Тиймс'], mail: ['✉️', 'мейл'], intranet: ['🗂️', 'Интранет'], pris: ['👷', 'Присъствия'], file: ['📄', 'файл'] };
+  var KANAL_RED = ['teams', 'mail', 'intranet', 'pris', 'file'];
+  function tipEmo(tip) { return KANAL[kanalOf(tip)][0]; }
+  // различните канали на източниците, в реда Тиймс, мейл, Интранет, Присъствия, файл
+  function kanali(izv) { var m = {}; (izv || []).forEach(function (s) { m[kanalOf(s && s.tip)] = 1; }); return KANAL_RED.filter(function (k) { return m[k]; }); }
+  // Бутонът „Източници“: от ≥ 2 канала → иконите + „N източника ›“; от един канал — номерата, както досега [§5.3 а]
+  // kind: 'pc' (Преглед), 'fd' (Промени в Табло), 'dc' (решение в Табло — малък бутон горе вдясно)
+  function srcBtn(izv, tid, a, kind) {
+    var ch = kanali(izv), n = izv.length, lbl = n === 1 ? 'източник' : 'източника';
+    if (ch.length >= 2) {
+      return '<button type="button" class="srcb mk' + (kind === 'dc' ? ' dc-src' : '') + '" data-a="' + a + '" data-tid="' + esc(tid) + '" aria-label="' + esc('Източници: ' + n + ' — ' + ch.map(function (k) { return KANAL[k][1]; }).join(', ')) + '">' +
+        '<span class="srcb-e" aria-hidden="true">' + ch.map(function (k) { return KANAL[k][0]; }).join('') + '</span><span class="srcb-n">' + n + (kind === 'dc' ? '' : ' ' + lbl) + '</span><span class="srcb-l">›</span></button>';
+    }
+    if (kind === 'dc') return '<button type="button" class="srcb dc-src" data-a="' + a + '" data-tid="' + esc(tid) + '" aria-label="Източници: ' + n + '"><span class="ref">' + n + '</span><span class="srcb-l">›</span></button>';
+    return '<button type="button" class="srcb" data-a="' + a + '" data-tid="' + esc(tid) + '" aria-label="Източници: ' + n + '">' + izv.map(function (s) { return '<span class="ref">' + esc(s.n) + '</span>'; }).join('') + '<span class="srcb-l">' + lbl + ' ›</span></button>';
+  }
 
   // ---------- заглавие на всеки екран: името + едно изречение „какво е това“ (§3.2) ----------
   var SCR = {
@@ -826,7 +916,7 @@
         '<aside class="pv3-d" aria-label="Дни"><div class="dl-h">' + och + '<span id="redDni">' + redChip('dni') + '</span></div>' +
           '<div class="dl" id="strip" role="tablist" aria-label="Дни" aria-orientation="vertical"></div>' + leg + '</aside>' +
         '<div class="pv3-m"><div id="fresh"></div><section id="sum"></section><section id="pris" class="pris-w"></section><div id="groups" class="groups"></div>' +
-          '<section id="full"></section><div id="appr"></div><div id="apprNx"></div><section id="acts" class="actsec"></section></div>' +
+          '<section id="full"></section><section id="izt" class="izt-w" aria-label="Източниците на деня"></section><div id="appr"></div><div id="apprNx"></div><section id="acts" class="actsec"></section></div>' +
         '<aside class="pv3-p" id="pan" aria-label="Избрана точка"><div id="panT"></div><section id="ph" class="phs-w" aria-label="Всички снимки на деня"></section></aside></div>';
     } else {
       screen.innerHTML = scrHead('day') +
@@ -834,9 +924,10 @@
         '<div class="strip" id="strip" role="tablist" aria-label="Дни"></div>' + leg + '</section>' +
         '<div id="fresh"></div><section id="sum"></section><section id="pris" class="pris-w"></section><div id="groups" class="groups"></div>' +
         '<section id="ph" class="phs-w" aria-label="Всички снимки на деня"></section><section id="full"></section>' +
+        '<section id="izt" class="izt-w" aria-label="Източниците на деня"></section>' +
         '<div id="appr"></div><div id="apprNx"></div><section id="acts" class="actsec"></section>';
     }
-    renderStrip(); renderFresh(); renderSum(); renderPris(); renderGroups(); renderPh(); renderFull(); renderAppr(); renderActs(); renderBanners();
+    renderStrip(); renderFresh(); renderSum(); renderPris(); renderGroups(); renderPh(); renderFull(); renderIzt(); renderAppr(); renderActs(); renderBanners();
     if (WIDE) renderPan(true);
     centerStrip();
     if (S.flash && S.den && S.flash.den === S.den.id) setTimeout(flashPoint, 80);   // от Таблото: точката светва
@@ -863,7 +954,7 @@
     renderStrip(); renderFresh(); renderAppr(); renderActs(); renderBanners();
     var sig = sigOf(), ch = sig !== S.sig;
     // картата „👷 Присъствия“ и „Пълен запис“ (📘/🚫 от другото устройство) — box() пише само разликата
-    keepAnchor(function () { if (ch) { renderSum(); renderGroups(); } renderPris(); if (ch) renderFull(); });
+    keepAnchor(function () { if (ch) { renderSum(); renderGroups(); } renderPris(); if (ch) renderFull(); renderIzt(); });
     keepY(['#ph'], renderPh);   // снимките: box() пише само при промяна (напр. покритие ⇄ без покритие)
     if (WIDE) renderPan();
   }
@@ -942,13 +1033,53 @@
     }).join('');
     el.scrollLeft = keep;
   }
-  function fresh(s) { var t = Date.parse(s.posledno); return s.ok !== false && !isNaN(t) && (nowMs() - t) / 3600000 <= STALE_H; }
+  // Свежест по истинския график [ETAP6 §3.5, §5.7 — с ПРОМЯНАТА 08.10]: Тиймс, Поща, Присъствия, Интранет ги чете пазачът на 2 ч
+  // (07–21) + сутрешният пуск → денем (09:30–20:59) застарял при > 3 ч от последното четене; нощем (21:00–09:29) — само ако след
+  // 07:00 на последния работен ден (сега ≥ 21:00 → днес 07:00; сега < 09:30 → вчера 07:00) няма четене, т.е. целия ден нищо не е
+  // четено; винаги — при ok = false. ПОПРАВКА 13.10 (беше 17:00): лаптопът спал вечерта и събуден нощем → до 07:00 няма четене
+  // (пазачът не чете 21:00–06:59) и ⚠️ стоеше цяла нощ, без РП да може нещо [§3.5, F9].
+  // Сървърът (и лаптопът) — по старото правило (STALE_H). T = „сега“ в ms; при спящ лаптоп — часът, в който е заспал.
+  var SV_GRAF = { teams: 1, poshta: 1, prisystvia: 1, intranet: 1 };
+  function svOld(s, T) {
+    T = T == null ? nowMs() : T;
+    var t = s ? Date.parse(s.posledno) : NaN;
+    if (!s || s.ok === false || isNaN(t)) return true;
+    if (!SV_GRAF[s.izvor]) return (T - t) / 3600000 > STALE_H;
+    var d = new Date(T), m = d.getHours() * 60 + d.getMinutes();
+    if (m >= 570 && m < 1260) return T - t > 3 * 36e5;
+    return t < new Date(d.getFullYear(), d.getMonth(), d.getDate() - (m < 570 ? 1 : 0), 7, 0, 0, 0).getTime();
+  }
+  function fresh(s) { return !svOld(s); }
+  // Лаптопът спи: пазачът пише svezhest.laptop на 2 мин — по-старо от 15 мин → {spi, ot: 'ЧЧ:ММ' / 'вчера ЧЧ:ММ' / 'ДД.ММ ЧЧ:ММ', T} [§3.5]
+  function svSpi() {
+    var s = svOf('laptop'), t = s ? Date.parse(s.posledno) : NaN;
+    if (isNaN(t) || nowMs() - t <= 15 * 60000) return { spi: false, T: nowMs() };
+    var d = new Date(t), n = now(), y = new Date(n.getFullYear(), n.getMonth(), n.getDate() - 1);
+    return { spi: true, T: t, ot: sameDay(d, n) ? hhmm(d) : sameDay(d, y) ? 'вчера ' + hhmm(d) : ddmm(d) + ' ' + hhmm(d) };
+  }
+  function spiTxt(sp) { return '💻 Лаптопът спи от ' + sp.ot + ' — данните ще се обновят, щом се включи'; }
+  // застарял: при спящ лаптоп — само ако е бил застарял още към заспиването (кехлибарено); иначе — по графика
+  function svWarn(s, sp) { return sp.spi ? s.izvor !== 'laptop' && svOld(s, sp.T) : svOld(s); }
   function sortSv(list) { return (list || []).slice().sort(function (a, b) { var i = IZ_RED.indexOf(a.izvor), j = IZ_RED.indexOf(b.izvor); return (i < 0 ? 99 : i) - (j < 0 ? 99 : j); }); }
   // sel — контейнерът (Ден: #fresh, Табло: #tb-fresh); compact — 1 ред, по име само застарелите [К3, К17]
   function renderFresh(sel, compact) {
     var el = box(sel || '#fresh'); if (!el) return;
     var list = sortSv(S.svezhest);
     if (!list.length) { el.innerHTML = '<button type="button" class="fresh warn" data-a="fresh">⚠️ Свежест: лаптопът още не е пратил данни за източниците</button>'; return; }
+    var sp = svSpi();
+    if (sp.spi) {
+      // лаптопът спи → ЕДИН спокоен сив ред (без ⚠️) + кехлибарено само застарялото още преди заспиването [§5.7]
+      var old0 = list.filter(function (s) { return svWarn(s, sp); });
+      var oh = old0.map(function (s) { return esc(IZ[s.izvor] ? IZ[s.izvor][0] : s.izvor) + ' ⚠️ ' + esc(rel(s.posledno)); });
+      if (compact) {
+        el.innerHTML = '<button type="button" class="fresh one sleep" data-a="fresh" aria-label="Свежест на източниците — подробно"><span class="fr-l">' + esc(spiTxt(sp)) +
+          (oh.length ? ' · <span class="fr-old">' + oh.join(' · ') + '</span>' : '') + '</span><span class="fr-go" aria-hidden="true">›</span></button>';
+        return;
+      }
+      el.innerHTML = '<button type="button" class="fresh sleep" data-a="fresh" aria-label="Свежест на източниците — подробно"><span class="fr-u">' + esc(spiTxt(sp)) + '</span>' +
+        old0.map(function (s, i) { return '<span class="fr old">' + oh[i].replace(' ⚠️ ', ' ⚠️ <span class="mono">') + '</span></span>'; }).join('') + '</button>';
+      return;
+    }
     var okT = list.filter(fresh).map(function (s) { return Date.parse(s.posledno); });
     if (compact) {
       var old = list.filter(function (s) { return !fresh(s); });
@@ -1013,27 +1144,20 @@
       var h = grpHtml(G, g[G.k], q);
       if (sec._h !== h) { sec.innerHTML = h; sec._h = h; }
     });
-    // лентите „Отмени“ текат от натискането, не от последното пречертаване
-    Array.prototype.forEach.call(el.querySelectorAll('[data-ub]'), function (b) {
-      var u = UNDO[b.getAttribute('data-ub')]; if (u) b.style.animationDuration = Math.max(0, UNDO_MS - (Date.now() - u.t0)) + 'ms';
-    });
     S.sig = sigOf();
   }
   function grpHtml(G, arr, q) {
     var open = [], rev = [];
-    arr.forEach(function (t) { if (pregledana(t, q) && !undoing(t)) rev.push(t); else open.push(t); });
-    var left = open.filter(function (t) { return !undoing(t); }).length;
+    // Етап 6 [§5.6]: прегледаната карта отива в „Прегледани“ веднага (и докато „Отмени“ е в лентата долу)
+    arr.forEach(function (t) { if (pregledana(t, q)) rev.push(t); else open.push(t); });
+    var left = open.length;
     var h = '<div class="grp-h" data-anc="g' + G.k + '"><h2>' + G.t + '</h2><span class="grp-n">' + arr.length + '</span>' +
       (arr.length ? '<span class="grp-l' + (left ? '' : ' ok') + '">' + (left ? 'остават ' + left + ' от ' + arr.length : '✓ всичко') + '</span>' : '') + '</div>' +
       '<p class="grp-s">' + G.s + '</p>';
     if (!arr.length) return h + '<p class="grp-e">' + G.e + '</p>';
     h += open.map(function (t) { return pointCard(t); }).join('');
-    // „✓ Видях останалите (N)“ — 1 докосване вместо N (само промени и непроверени) [К25]
-    var gu = UNDO['grp:' + G.k];
-    if (G.k !== 'reshenie' && (gu || left > 1)) {
-      h += gu ? '<div class="seen-all undoing"><span>' + esc(gu.lbl) + '</span><button type="button" class="pa" data-a="undo" data-k="grp:' + G.k + '">Отмени</button><i class="u-bar" data-ub="grp:' + G.k + '" aria-hidden="true"></i></div>'
-        : '<button type="button" class="btn ghost seen-all" data-a="seenAll" data-g="' + G.k + '">✓ Видях останалите (' + left + ')</button>';
-    }
+    // „✓ Видях останалите (N)“ — 1 докосване вместо N (само промени и непроверени) [К25]; „Отмени“ — в лентата долу [§5.6]
+    if (G.k !== 'reshenie' && left > 1) h += '<button type="button" class="btn ghost seen-all" data-a="seenAll" data-g="' + G.k + '">✓ Видях останалите (' + left + ')</button>';
     if (!open.length && !rev.length) return h;
     if (rev.length) {
       rev.sort(function (a, b) { var x = revInfo(a, q).at, y = revInfo(b, q).at; return x < y ? 1 : x > y ? -1 : 0; });   // последното горе
@@ -1054,7 +1178,7 @@
     if (f) r = { ico: '✎', st: 'поправка · ' + (f.pend ? 'чака връзка' : (f.rez || 'чака Claude')) };
     else if (k) r = { ico: '💬', st: 'разяснение · ' + (k.pend ? 'чака връзка' : (lk && (!k.rez || /чака Claude/i.test(k.rez)) ? 'записано' : (k.rez || 'чака Claude'))) };
     else if (m.dn === false) r = { ico: '🚫', st: 'не за дневника' };
-    else if (ts.length) { var a = ts[0], v = VID[a.vid] || ['📌', 'задача']; r = { ico: v[0], st: v[1] + ' · ' + stOf(a)[0] }; }
+    else if (ts.length) { var a = ts[0], v = vidIme(a) || ['📌', 'задача']; r = { ico: v[0], st: v[1] + ' · ' + stOf(a)[0] }; }
     else if (m.ok) r = { ico: '✓', st: (m.ok.otg ? 'отговорено' : 'вярно') + (m.ok.pend ? ' · чака връзка' : '') };
     else if (TB.closed[t.id]) r = { ico: '✓', st: 'отговорено от Таблото' };
     else r = { ico: '✓', st: 'видях' };
@@ -1071,7 +1195,7 @@
   // Карта на точка. rv = разгъната от „Решени/Прегледани“ (горе — свиващият ред). Бутоните — по групата и деня [§5.2].
   function pointCard(t, rv) {
     var q = queue(), m = mine(t.id, q), hot = (t.vajnost || 1) >= 3, ist = ISTINA[t.istina] || ISTINA.saobshteno, izv = t.izvori || [];
-    var lk = locked(), res = t.grupa === 'reshenie', u = UNDO['pc:' + t.id], tid = esc(t.id), err = errOf(t.id, q);
+    var lk = locked(), res = t.grupa === 'reshenie', tid = esc(t.id), err = errOf(t.id, q);
     var ph = tPhotos(t), ts = tasksOf(t.id, q), wp = res ? waitPill(S.den ? S.den.data : '') : null;
     // долу в реда с етикетите: заключен ден / ред без номер → старият пил; иначе само състоянието „🚫 няма да влезе“ (бутонът е в реда с действията)
     var vd0 = vDn(t, q), dnB = (lk || dnBezRed(t)) ? dnBtn(t, vd0, lk) : (vd0 ? '' : '<span class="pill p-izk">🚫 няма да влезе в дневника</span>'), wsel = WIDE && view === 'day';
@@ -1082,7 +1206,7 @@
     else if (!lk && t.istina !== 'provereno') b1 = '<button type="button" class="pa pa-ok" data-a="ok" data-tid="' + tid + '"' + (m.ok ? ' disabled aria-pressed="true"' : '') + '>' + (m.ok ? '✓ вярно' : '✓ Вярно') + '</button>';
     else { var vd = S.den && vidOf(S.den.id, t.id); b1 = '<button type="button" class="pa pa-ok" data-a="seen" data-tid="' + tid + '"' + (vd ? ' disabled aria-pressed="true"' : '') + '>' + (vd ? '✓ видях' : '✓ Видях') + '</button>'; }
     // широк екран: клик върху картата (не върху бутон) → панелът „Избрана точка“ [§6.2]
-    return '<article class="pc' + (hot ? ' hot' : '') + (u ? ' undoing' : '') + (vd0 ? '' : ' izk') + (rv ? ' rv' : (!u && !pregledana(t, q) ? ' nx' : '')) + (wsel && S.selT === t.id ? ' sel' : '') + '" data-tid="' + tid + '"' + (rv ? '' : ' data-anc="p' + tid + '"') + (wsel ? ' data-a="pcSel"' : '') + '>' + head +
+    return '<article class="pc' + (hot ? ' hot' : '') + (vd0 ? '' : ' izk') + (rv ? ' rv' : (!pregledana(t, q) ? ' nx' : '')) + (wsel && S.selT === t.id ? ' sel' : '') + '" data-tid="' + tid + '"' + (rv ? '' : ' data-anc="p' + tid + '"') + (wsel ? ' data-a="pcSel"' : '') + '>' + head +
       '<div class="pc-in">' +
       (wp ? '<div class="pc-w"><span class="pill ' + wp[1] + '">' + wp[0] + '</span>' + (err ? '<button type="button" class="pill p-warn pc-errb" data-a="qerr">⚠️ не се записа — виж</button>' : '') + '</div>'
         : err ? '<div class="pc-w"><button type="button" class="pill p-warn pc-errb" data-a="qerr">⚠️ не се записа — виж</button></div>' : '') +
@@ -1096,25 +1220,66 @@
         return '<div class="pc-fix kom"><b>💬 Твоето разяснение:</b> ' + esc(f.tekst) + '<span class="pc-fs">' + (f.err ? '⚠️ не се записа — виж лентата горе' : f.pend ? '⏳ чака връзка' : lk && (!f.rez || /чака Claude/i.test(f.rez)) ? '💬 записано' : f.rez ? esc(f.rez) : '⏳ чака Claude') + '</span></div>';
       }).join('') +
       ts.map(function (a) {
-        var v = VID[a.vid] || ['📌', 'Задача'], s = stOf(a);
+        var v = vidIme(a) || ['📌', 'Задача'], s = stOf(a);
         return '<button type="button" class="pc-task" data-a="zad" data-id="' + esc(a.id) + '"><span aria-hidden="true">' + v[0] + '</span> <span class="pc-tt">' + esc(v[1]) + ': ' + esc(clip(a.tekst, 80)) + '</span> <span class="pill ' + s[1] + '">' + esc(s[0]) + '</span></button>';
       }).join('') +
       '<div class="pc-m"><span class="pill ' + ist[1] + '">' + ist[0] + '</span>' +
         (hot ? '<span class="pill p-bad">⚠️ важно</span>' : '') +
         (m.ok ? '<span class="pill p-mine">' + (m.ok.pend ? (m.ok.otg ? '⏳ отговорът чака връзка' : '⏳ потвърждение чака връзка') : (m.ok.otg ? '✓ отговорено от теб' : '✓ вярно от теб')) + '</span>' : '') + dnB + (m.dnNe && dnMozhe(t) ? dnNeHtml(m.dnNe) : '') +
-        (izv.length
-          ? '<button type="button" class="srcb" data-a="src" data-tid="' + tid + '" aria-label="Източници: ' + izv.length + '">' + izv.map(function (s) { return '<span class="ref">' + esc(s.n) + '</span>'; }).join('') + '<span class="srcb-l">' + (izv.length === 1 ? 'източник' : 'източника') + ' ›</span></button>'
-          : '<span class="pill p-warn">няма източник</span>') +
+        izPillsHtml(t) + prisPillHtml(t) +
+        (izv.length ? srcBtn(izv, t.id, 'src', 'pc') : '<span class="pill p-warn">няма източник</span>') +
       '</div></div>' +
-      // 5 с „Отмени“: картата стои на мястото си (приглушена), сменя се само редът с бутоните — височината не се мени [§5.3]
-      (u ? '<div class="pc-a pc-ua"><span class="pc-u">' + esc(u.lbl) + '</span><button type="button" class="pa pc-ub" data-a="undo" data-k="pc:' + tid + '">Отмени</button><i class="u-bar" data-ub="pc:' + tid + '" aria-hidden="true"></i></div>'
-        : '<div class="pc-a">' + b1 +
-          '<button type="button" class="pa" data-a="fix" data-tid="' + tid + '">✎ Поясни</button>' +
-          '<button type="button" class="pa" data-a="act" data-tid="' + tid + '">→ Задача</button>' +
-          // 07.10: ясен бутон на свой ред (сивият пил долу не се разпознаваше като бутон)
-          (!lk && dnMozhe(t) ? '<button type="button" class="pa pa-dn' + (vd0 ? '' : ' off') + '" data-a="dn" data-tid="' + tid + '" aria-pressed="' + !vd0 + '">' + (vd0 ? '🚫 Не включвай в дневника' : '📘 Върни в дневника') + '</button>' : '') +
-          '</div>') + '</article>';
+      // Етап 6 [§5.6]: без приглушена карта с „Отмени“ — действието се вижда веднага, „Отмени“ е в лентата долу.
+      // Редът с действията (375 px): ред 1 — ✓ · ✎ · →; ред 2 — само на чернова, когато 🚫 се полага [§5.5]
+      '<div class="pc-a">' + b1 +
+        '<button type="button" class="pa" data-a="fix" data-tid="' + tid + '">✎ Поясни</button>' +
+        '<button type="button" class="pa" data-a="act" data-tid="' + tid + '">→ Задача</button>' +
+        // 07.10: ясен бутон на свой ред (сивият пил долу не се разпознаваше като бутон)
+        (!lk && dnMozhe(t) ? '<button type="button" class="pa pa-dn' + (vd0 ? '' : ' off') + '" data-a="dn" data-tid="' + tid + '" aria-pressed="' + !vd0 + '" aria-label="' + (vd0 ? 'Не включвай в дневника' : 'Върни в дневника') + '">' + (vd0 ? '🚫 Не включвай в дневника' : '📘 Върни в дневника') + '</button>' : '') +
+      '</div></article>';
   }
+  // F2 (б) [§5.3]: пил „🗂️ #7888“ (до 3 на карта) — от източник „Интранет“ с tid и от текста САМО с контекст („задача …“, „Интранет …“) и
+  // само ако числото е задача в списъка на Интранета (голо „№ 4521“ може да е фактура/акт/протокол); тап → листът на задачата
+  var IZ_TXT_RE = /(?:задача|Интранет)[^0-9]{0,12}(?:№|#)?\s?(\d{4,5})/gi;
+  function izTids(t) {
+    var out = [];
+    function add(n) { if (n && out.indexOf(n) < 0) out.push(n); }
+    (t.izvori || []).forEach(function (s) { if (s && kanalOf(s.tip) === 'intranet' && /^\d{1,6}$/.test(String(s.tid == null ? '' : s.tid))) add(+s.tid); });
+    var tx = String(t.tekst || ''), m;
+    IZ_TXT_RE.lastIndex = 0;
+    if (IZ_TXT_RE.test(tx)) {
+      // списъкът от Етап 5 — при нужда (кешът му важи); след неуспех — не пак от рисуването (без порой от заявки)
+      izInit(); if (!IZT.rows && !IZT.busy && !IZT.st) izLoad();
+      IZ_TXT_RE.lastIndex = 0;
+      while ((m = IZ_TXT_RE.exec(tx))) { if (izFind(+m[1])) add(+m[1]); }
+    }
+    IZ_TXT_RE.lastIndex = 0;
+    return out.slice(0, 3);
+  }
+  function izPillsHtml(t) {
+    return izTids(t).map(function (n) { return '<button type="button" class="pill p-iz" data-a="izad" data-tid="' + n + '" aria-label="' + esc('Задача от Интранета №' + n + ' — отвори') + '">🗂️ #' + n + '</button>'; }).join('');
+  }
+  // F2 (в): пил „👷 Присъствия: нето N“ — САМО на една точка на деня: с източник от Присъствия, иначе първата от раздел 3 с
+  // числото на хората в текста; кехлибарено „≠ M в деня“, ако черновата казва друго [§5.3 в]
+  function prisPillT() {
+    var d = S.den; if (!d || !prisOk()) return null;
+    var p = prisOf(d.obekt || OBEKT_KOD, d.data); if (!p) return null;
+    var hv = horaOf(d), cards = S.tochki.filter(function (t) { return t.grupa !== 'fakt'; });
+    var a = cards.filter(function (t) { return (t.izvori || []).some(function (s) { return kanalOf(s && s.tip) === 'pris'; }); })[0];
+    if (!a) {
+      var nums = [p.neto].concat(hv != null && hv !== p.neto ? [hv] : []);
+      a = cards.filter(function (t) { return t.razdel === 3 && nums.some(function (n) { return new RegExp('(^|[^0-9])' + n + '([^0-9]|$)').test(String(t.tekst || '')); }); })[0];
+    }
+    return a ? { tid: a.id, p: p, hv: hv } : null;
+  }
+  function prisPillHtml(t) {
+    var x = PPT.den === (S.den && S.den.id) && PPT.sig === prisSig() ? PPT.v : (PPT = { den: S.den && S.den.id, sig: prisSig(), v: prisPillT() }).v;
+    if (!x || x.tid !== t.id) return '';
+    var raz = x.hv != null && x.hv !== x.p.neto;
+    return '<button type="button" class="pill ' + (raz ? 'p-warn' : 'p-neutral') + ' p-pris" data-a="prisT">👷 Присъствия: нето ' + x.p.neto + (raz ? ' ≠ ' + x.hv + ' в деня' : '') + '</button>';
+  }
+  var PPT = { den: null, sig: '', v: null };
+  function prisSig() { var d = S.den; if (!d) return ''; var p = prisOk() ? prisOf(d.obekt || OBEKT_KOD, d.data) : null; return d.versiq + ':' + (p ? p.neto : '-') + ':' + d.hora + ':' + S.tochki.length; }
   function rerenderCard(tid) { keepAnchor(function () { renderGroups(); }); }
   // Пише в контейнера само ако HTML-ът се е сменил — проверката на 20 с не бива да подменя бутон под пръста.
   function box(sel) {
@@ -1137,11 +1302,13 @@
     S.tochki.forEach(function (t) { if (t.k != null) tk[t.k] = 1; });
     var items = ch.redove.filter(function (x) { return show || !x.izk; });
     items.forEach(function (x) { x.tap = !!(x.ks.length && x.ks.some(function (k) { return tk[k]; })); if (x.tap) tap = true; });
-    var n = (ch.chist.match(/^##\s/mg) || []).length;
+    var n = (ch.chist.match(/^##\s/mg) || []).length, nIz = ch.skriti + ch.avto;   // заглавието брои ОСТАНАЛИТЕ раздели [§5.8]
+    var izB = '<button type="button" class="lnk md-izk-b" data-a="mdIzk" aria-pressed="' + show + '">' + (show ? 'Скрий изключените' : 'Покажи и изключените (' + nIz + ')') + '</button>';
     el.className = '';
-    el.innerHTML = '<details class="full card" id="fullD"' + (S.fullOpen ? ' open' : '') + '><summary><span>📄 Пълен запис' + (n ? ' (' + n + ' раздела)' : '') + '</span><span class="chev" aria-hidden="true">▾</span></summary>' +
-      (ch.skriti ? '<div class="md-izk"><span>🚫 ' + ch.skriti + (ch.skriti === 1 ? ' ред не влиза' : ' реда не влизат') + ' в дневника (точки „не за дневника“) — по-долу е записът, както ще се впише.</span>' +
-        '<button type="button" class="lnk md-izk-b" data-a="mdIzk" aria-pressed="' + show + '">' + (show ? 'Скрий изключените' : 'Покажи и изключените (' + ch.skriti + ')') + '</button></div>' : '') +
+    el.innerHTML = '<details class="full card" id="fullD"' + (S.fullOpen ? ' open' : '') + '><summary><span>📄 Пълен запис' + (n ? ' (' + n + ' ' + pl(n, 'раздел', 'раздела') + ')' : '') + '</span><span class="chev" aria-hidden="true">▾</span></summary>' +
+      (ch.skriti ? '<div class="md-izk"><span>🚫 ' + ch.skriti + (ch.skriti === 1 ? ' ред не влиза' : ' реда не влизат') + ' в дневника (точки „не за дневника“) — по-долу е записът, както ще се впише.</span>' + izB + '</div>'
+        // само празни раздели/заместители (махат се сами — както в Word) → спокоен ред, не кехлибарен
+        : ch.avto ? '<div class="md-izk calm"><span>' + (ch.razdeli ? ch.razdeli + ' ' + pl(ch.razdeli, 'празен раздел не се пише', 'празни раздела не се пишат') : 'Празните редове не се пишат') + ' — по-долу е записът, както ще се впише в Word.</span>' + izB + '</div>' : '') +
       (ch.err ? '<p class="warnline md-err">⚠️ В записа има счупен маркер ⟦…⟧ — лаптопът няма да впише деня, докато Claude не го поправи.</p>' : '') +
       (tap ? '<p class="md-tip small muted">Докосни ред, за да видиш от коя точка е — и дали влиза в дневника.</p>' : '') +
       '<div class="md">' + (ch.chist.trim() ? md2html(items, refMap()) : '<p class="muted">Черновата още няма пълен запис.</p>') + '</div></details>';
@@ -1161,16 +1328,103 @@
   // етикет: ред, който завършва на „:“, или цял **…** (Word го прави удебелено подзаглавие) — без заглавия и таблици [К8]
   // (същото като Test-AiEtiket в ailab-lib.ps1)
   function mdEtiket(t) { var s = t.trim(); return !!s && !/^#/.test(s) && !tblRed(s) && (/:$/.test(s) || /^\*\*.+\*\*$/.test(s)); }
-  // Махането при вписване — правилата 1–6 на §3.1, едни и същи с ConvertTo-AiZapisChist (ailab-lib.ps1) [К10]; izk = {k: true}.
-  //  1) ред с маркери вън, само ако ВСИЧКИТЕ му номера са изключени; 4) от останалите — маркерите и интервалите в края;
-  //  2) таблица (поредни редове, започващи с „|“; глава = първият ред), която е имала ред с данни и всичките са махнати → цялата (глава + разделител);
-  //  6) етикет, под който (до празен ред, заглавие, „---“ или следващ етикет) е имало редове и всички са махнати → вън;
-  //  3) раздел „## N. …“ без съдържание → „- Не е постъпила информация.“ веднага след заглавието;
+  // „📄 Пълен запис“ = точно това, което отива в .md и Word: махането при вписване, едно и също с Get-AiZapisChist
+  // (ailab-lib.ps1) и tools\markeri-primeri.json [К10] — правилата на ETAP6-SPEC §3.4; izk = {k: true}. Ред: 1 → 7 → 2 → 6/6б → 3 → 4 → 5.
+  //  1) ред с ⟦…⟧ вън, само ако ВСИЧКИТЕ му номера са изключени;
+  //  7) заместителите вън: ред в раздели 1–11 без ⟦…⟧, който (след „- “/„* “/„• “ и крайната точка) е точно „Не е постъпила
+  //     информация“, „Няма постъпила информация“, „Няма информация“, „Няма данни“, „Няма“, „Без информация“, „—“, „–“, „-“, „n/a“;
+  //  2) таблица (поредни редове, започващи с „|“; глава = първият ред) без нито един останал ред с данни → вън цялата
+  //     (вкл. таблица само с глава и разделител);
+  //  6) етикет („…:“ или цял **…**), под който (до празен ред/заглавие/„---“/следващ етикет) е ИМАЛО редове и всички са махнати → вън;
+  //  6б) етикет БЕЗ свой ⟦k⟧, под който няма нищо, а следващият непразен ОСТАНАЛ ред е „## “, „---“ или краят → вън (отдолу нагоре;
+  //     етикет със свой неизключен ⟦k⟧ никога — той е ред-факт);
+  //  3) раздел „## N. …“ (N = 1…11) без останал ред със съдържание (празните и „---“ не са) → вън целият, заглавието с празните му
+  //     редове и „---“; номерата на останалите НЕ се сменят (О1); раздел 12 — никога;
+  //  4) от останалите — маркерите и интервалите в края; поредни празни редове → един; празните в началото и в края → вън;
   //  5) останал ⟦ или ⟧ → err (лаптопът не пише).
-  // → { chist: официалният текст, redove: [{t, ks, izk, auto}] — всички редове по реда им (махнатите с izk), skriti: редовете по правило 1, err }
-  function zapisMahni(md, izk) {
+  // o.star — старото правило (Етап 5: без 7, 6б, новото 2 и новото 3; празен раздел → „- Не е постъпила информация.“) — за дни,
+  // вписани преди Етап 6 със заместител в записа: същото като вече написания Word [§3.4 „Вече вписани дни“].
+  // → { chist, redove: [{t, ks, izk, r1 (т. 1), auto (7, 2, 6, 3), pr (заглавие на празен раздел)}] — всички редове по реда им,
+  //     skriti (т. 1), avto (махнатите сами, без празните), razdeli (махнатите раздели), err }
+  var ZAMEST = ['не е постъпила информация', 'няма постъпила информация', 'няма информация', 'няма данни', 'няма', 'без информация', '—', '–', '-', 'n/a'];
+  // заместител — като Test-AiZamestitel: ред БЕЗ ⟦/⟧ (и счупен маркер не е), точно един от списъка; дали е в 1–11 гледа викащият
+  function zamest(raw) {
+    var s = String(raw == null ? '' : raw);
+    if (/[⟦⟧]/.test(s)) return false;
+    var t = s.trim().replace(/^[-*•]\s+/, '').replace(/\.$/, '').trim();
+    return !!t && ZAMEST.indexOf(t.toLowerCase()) >= 0;
+  }
+  // записът има ли заместител в раздели 1–11 (т.е. е от преди Етап 6)
+  function imaZamest(md) {
+    var r = 0;
+    return String(md || '').replace(/\r\n?/g, '\n').split('\n').some(function (l) {
+      var m = /^## (\d{1,2})\. /.exec(l); if (m) { r = +m[1]; return false; }
+      return r >= 1 && r <= 11 && zamest(l);
+    });
+  }
+  function zapisMahni(md, izk, o) {
+    if (o && o.star) return zapisMahniStar(md, izk);
+    izk = izk || {};
+    var ima = Object.keys(izk).length > 0, i, j, x, g;
+    var raw = String(md == null ? '' : md).replace(/\r\n?/g, '\n').replace(/\u0000/g, '').split('\n'), n = raw.length;
+    var L = raw.map(function (l) { return { t: l.replace(MARK_RE, '').replace(/\s+$/, ''), ks: mdKs(l), izk: false }; });
+    var razd = [], glavi = [], tek = 0, nR = 0;
+    for (i = 0; i < n; i++) { var mh = /^## (\d{1,2})\. /.exec(raw[i]); if (mh) { tek = +mh[1]; glavi.push(i); } razd.push(tek); }
+    function van(y) { if (!y.izk) { y.izk = true; y.auto = true; } }
+    // 1) редовете само от изключени точки
+    // e1 = махнат ЗАРАДИ изключване от РП (т. 1 или таблица с данни, махнати по т. 1) — за т. 6 при етикет със свой ⟦k⟧ [поправка 13.10]
+    if (ima) L.forEach(function (y) { if (y.ks.length && y.ks.every(function (k) { return izk[k]; })) { y.izk = true; y.r1 = true; y.e1 = true; } });
+    // 7) заместителите в раздели 1–11
+    for (i = 0; i < n; i++) { if (!L[i].izk && razd[i] >= 1 && razd[i] <= 11 && !/^## \d{1,2}\. /.test(raw[i]) && zamest(raw[i])) van(L[i]); }
+    // 2) таблица без нито един останал ред с данни (вкл. само глава и разделител)
+    for (i = 0; i < n;) {
+      if (!tblRed(L[i].t)) { i++; continue; }
+      j = i; while (j < n && tblRed(L[j].t)) j++;
+      var ost = 0, danni = 0;
+      for (x = i + 1; x < j; x++) if (!tblSep(L[x].t)) { danni++; if (!L[x].izk) ost++; }
+      if (!ost) for (x = i; x < j; x++) { van(L[x]); if (danni) L[x].e1 = true; }   // с данни → махнати са по т. 1
+      i = j;
+    }
+    // 6) и 6б) етикетите — отдолу нагоре (6б гледа следващия ОСТАНАЛ ред)
+    function krai(y) { var s = y.t.trim(); return !s || /^#/.test(s) || /^-{3,}$/.test(s) || mdEtiket(y.t); }
+    for (i = n - 1; i >= 0; i--) {
+      if (L[i].izk || !mdEtiket(L[i].t)) continue;
+      var had = 0, left = 0, neE1 = 0;
+      for (j = i + 1; j < n; j++) { if (krai(L[j])) break; had++; if (!L[j].izk) left++; else if (!L[j].e1) neE1++; }
+      // етикет със свой НЕизключен ⟦k⟧ е ред-факт: вън само ако всичко под него е махнато заради изключване (не по 7 или 2) [§3.4]
+      if (had && !left) { if (!L[i].ks.some(function (k) { return !izk[k]; }) || !neE1) van(L[i]); continue; }
+      if (!had && !L[i].ks.length) {
+        var y = i + 1;
+        while (y < n && (L[y].izk || !raw[y].trim())) y++;
+        if (y >= n || raw[y].indexOf('## ') === 0 || /^-{3,}$/.test(L[y].t.trim())) van(L[i]);
+      }
+    }
+    // 3) празен раздел 1–11 → вън целият; раздел 12 — никога
+    for (g = 0; g < glavi.length; g++) {
+      var h = glavi[g]; if (razd[h] < 1 || razd[h] > 11) continue;
+      var kraj = g + 1 < glavi.length ? glavi[g + 1] : n, im = false;
+      for (x = h + 1; x < kraj; x++) { var s0 = L[x].izk ? '' : L[x].t.trim(); if (s0 && !/^-{3,}$/.test(s0)) { im = true; break; } }
+      if (!im) { for (x = h; x < kraj; x++) van(L[x]); L[h].pr = true; nR++; }
+    }
+    // 4) останалите — поредни празни → един; без празни в началото и в края
+    var out = [];
+    L.forEach(function (y) {
+      if (y.izk) return;
+      if (!y.t.trim()) { if (!out.length || out[out.length - 1] === '') return; out.push(''); return; }
+      out.push(y.t);
+    });
+    while (out.length && out[out.length - 1] === '') out.pop();
+    var chist = out.join('\n');
+    return { chist: chist, md: chist, redove: L, skriti: L.filter(function (y) { return y.r1; }).length,
+      avto: L.filter(function (y) { return y.auto && y.t.trim(); }).length, razdeli: nR, err: /[⟦⟧]/.test(chist) };
+  }
+  // Старото правило (Етап 5, ETAP5 §3.1) — БЕЗ ПРОМЯНА; само за дни, вписани преди Етап 6 (= Get-AiZapisChist -Star):
+  //  1) ред с маркери вън, само ако ВСИЧКИТЕ му номера са изключени; 4) от останалите — маркерите и интервалите в края;
+  //  2) таблица, която е имала ред с данни и всичките са махнати → цялата; 6) етикет, на който са махнати всички редове под него → вън;
+  //  3) раздел „## N. …“ без съдържание → „- Не е постъпила информация.“ веднага след заглавието; 5) останал ⟦ или ⟧ → err.
+  function zapisMahniStar(md, izk) {
     var ima = Object.keys(izk || {}).length > 0, i, j, x;
-    var L = String(md == null ? '' : md).split('\n').map(function (l) {
+    var L = String(md == null ? '' : md).replace(/\r\n?/g, '\n').replace(/\u0000/g, '').split('\n').map(function (l) {
       var ks = mdKs(l), out = ima && ks.length > 0 && ks.every(function (k) { return izk[k]; });
       return { t: l.replace(MARK_RE, '').replace(/\s+$/, ''), ks: ks, izk: out, r1: out };
     });
@@ -1200,25 +1454,33 @@
       R.push(L[i]);
       if (!L[i].izk && /^## \d{1,2}\. /.test(L[i].t)) {
         var im = false;
-        for (j = i + 1; j < L.length && !/^## \d{1,2}\. /.test(L[j].t); j++) { if (!L[j].izk && L[j].t.trim() && L[j].t.trim() !== '---') { im = true; break; } }
+        // само останалите редове (като Get-AiZapisChistStar — махнатият ред не спира търсенето)
+        for (j = i + 1; j < L.length; j++) { if (L[j].izk) continue; if (/^## \d{1,2}\. /.test(L[j].t)) break; if (L[j].t.trim() && L[j].t.trim() !== '---') { im = true; break; } }
         if (!im) R.push({ t: '- Не е постъпила информация.', ks: [], izk: false, auto: true });
       }
     }
     var chist = R.filter(function (y) { return !y.izk; }).map(function (y) { return y.t; }).join('\n');
-    return { chist: chist, md: chist, redove: R, skriti: skriti, err: /[⟦⟧]/.test(chist) };
+    return { chist: chist, md: chist, redove: R, skriti: skriti, avto: 0, razdeli: 0, err: /[⟦⟧]/.test(chist) };
   }
+  // Вписан ден със заместител в записа (вписан преди Етап 6) → по старото правило, за да е същото като Word [§3.4, §5.8]
+  function zapisStar(d, md) { return !!d && d.status === 'vpisana' && imaZamest(md); }
   function zapisChist(md) {
     var q = queue(), izk = {};
     S.tochki.forEach(function (t) { if (t.k != null && !vDn(t, q)) izk[t.k] = true; });
-    return zapisMahni(md, izk);
+    return zapisMahni(md, izk, { star: zapisStar(S.den, md) });
   }
-  // Проба срещу tools\markeri-primeri.json [К10] — само в демото: window.AILAB_MARKERI([{md, izk:[k…], ochakvano}]) →
-  // [{i, ok, poluchi, ochakvano}]; същият вход в ConvertTo-AiZapisChist трябва да даде същото.
-  if (DEMO) window.AILAB_MARKERI = function (primeri) {
+  // Проба срещу tools\markeri-primeri.json [К10] — само в демото: window.AILAB_MARKERI(primeri) → [{i, ime, ok, poluchi, ochakvano}];
+  // приема {md, izk, ochakvano} и формата на файла {vhod, izkl, izhod, greshka} (целия файл — и {sluchai: […]}); star — старото правило.
+  // Същият вход в ConvertTo-AiZapisChist трябва да даде същото.
+  // само в демото, за проверка в браузъра: опашката (задържаните — с hold/pauza) [ETAP6 §5.13 т.3, т.10]
+  if (DEMO) window.AILAB_Q = function () { return queue(); };  if (DEMO) window.AILAB_MARKERI = function (primeri, star) {
+    if (primeri && !Array.isArray(primeri) && Array.isArray(primeri.sluchai)) primeri = primeri.sluchai;
     return (primeri || []).map(function (p, i) {
       var iz = {}; (p.izk || p.izkl || []).forEach(function (k) { iz[+k] = true; });
-      var r = zapisMahni(String(p.md || '').replace(/\r\n?/g, '\n'), iz), o = p.ochakvano != null ? String(p.ochakvano).replace(/\r\n?/g, '\n') : null;
-      return { i: i, ime: p.ime || '', ok: o == null ? null : r.chist === o, err: r.err, poluchi: r.chist, ochakvano: o };
+      var vh = p.md != null ? p.md : p.vhod, oc = p.ochakvano != null ? p.ochakvano : p.izhod;
+      var r = zapisMahni(String(vh || '').replace(/\r\n?/g, '\n'), iz, { star: !!star }), o = oc != null ? String(oc).replace(/\r\n?/g, '\n') : null;
+      var ok = p.greshka ? r.err === true : o == null ? null : !r.err && r.chist === o;
+      return { i: i, ime: p.ime || '', ok: ok, err: r.err, poluchi: r.chist, ochakvano: o };
     });
   };
 
@@ -1250,7 +1512,8 @@
     items.forEach(function (x) {
       var l = String(x.t || '').replace(/\s+$/, ''), m, a = at(x);
       if (!l.trim()) { fA(); return; }
-      if ((m = /^(#{1,6})\s+(.*)$/.exec(l))) { fA(); var lv = Math.min(5, m[1].length + 1); out.push('<h' + lv + (x.izk ? ' class="md-izk-r"' : '') + '>' + inl(esc(m[2]), refs) + '</h' + lv + '>'); return; }
+      // махнато заглавие на празен раздел — задраскано + „празен раздел — не влиза“ [ETAP6 §5.8]
+      if ((m = /^(#{1,6})\s+(.*)$/.exec(l))) { fA(); var lv = Math.min(5, m[1].length + 1); out.push('<h' + lv + (x.izk ? ' class="md-izk-r"' : '') + '>' + inl(esc(m[2]), refs) + (x.pr ? ' <span class="md-pr">празен раздел — не влиза</span>' : '') + '</h' + lv + '>'); return; }
       if (TBL_RE.test(l)) {
         fP(); fL();
         var cells = l.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(function (c) { return c.trim(); });
@@ -1353,14 +1616,16 @@
   function openApprove() {
     var d = S.den; if (!d) return;
     commitUndos();   // чакащ 🚫 (2 с „Отмени“) влиза в опашката ПРЕДИ одобрението — опашката е по ред [К2]
-    var left = openCount(), ch = zapisChist(d.zapis_md || '');
+    var left = openCount(), ch = zapisChist(d.zapis_md || ''), nDob = dobaviCakat(d.id);
     openSheet('Одобряваш ли деня?',
       '<div class="ap-sum"><span class="ap-d">' + esc(dayTitle(d.data)) + '</span><span class="ap-v">версия ' + esc(d.versiq) + '</span></div>' +
       '<p>Лаптопът ще впише <b>точно тази версия</b>: запис .md и Word в OneDrive + копие на компютъра.</p>' +
+      // „➕ Включи в дневника“, които още чакат сутрешния пуск — одобрението сега ги изпуска [ETAP6 §3.1]
+      (nDob ? '<p class="warnline">➕ ' + nDob + ' ' + pl(nDob, 'съобщение чака да влезе', 'съобщения чакат да влязат') + ' — сутрешният пуск (09:00) ' + pl(nDob, 'го добавя', 'ги добавя') + ' като нова версия на този ден. Ако одобриш сега, няма да ' + pl(nDob, 'влезе', 'влязат') + '.</p>' : '') +
       (left ? '<p class="warnline">⏳ ' + left + (left === 1 ? ' точка е' : ' точки са') + ' без твой отговор — влизат в записа със статуса си („съобщено“, „оспорено“).</p>' : '') +
       (ch.skriti ? '<p class="small">🚫 ' + ch.skriti + (ch.skriti === 1 ? ' ред не влиза' : ' реда не влизат') + ' в дневника (точки „не за дневника“).</p>' : '') +
       prisApprLine(d) +
-      '<button type="button" class="btn big" data-a="approveGo">Одобрявам v ' + esc(d.versiq) + '</button>' +
+      '<button type="button" class="btn big" data-a="approveGo">' + (nDob ? 'Одобри без тях' : 'Одобрявам v ' + esc(d.versiq)) + '</button>' +
       '<button type="button" class="btn ghost" data-a="close">Още не</button>', 'approve');
   }
   // Докато листът „Одобряваш ли…“ е отворен, лаптопът качи нова версия → листът вече не предлага одобрение.
@@ -1385,62 +1650,120 @@
     }, function (e) { btn.disabled = false; toast('Не се записа: ' + errBg(e), 'bad'); });
   }
 
-  // ---------- 5 с „Отмени“ — общо за Преглед, Табло и Задачи (правило 8: всичко се отменя до 5 с) ----------
-  // u = {key, kind: 'pc' (карта в Преглед) | 'grp' („Видях останалите“) | 'dc' (карта на Таблото) | 'toast', lbl, tid,
-  //      tbl/row/meta — записът, или run() — само на телефона; pre() — точно преди записа; done(r), fail(e); redo() — „Отмени“ връща листа}
-  var UNDO = {}, UNDO_MS = 2000;   // РП 28.09: 2 с вместо 5 с
+  // ---------- Етап 6 [§5.6, F8]: без чакане след действие — „Отмени“ в ЕДНА лента долу ~5 с (правило 8) ----------
+  // u = {key, kind: 'pc' (карта в Преглед) | 'grp' („Видях останалите“) | 'dc' (решение в Табло) | 'dn' (🚫 в Табло) | 'toast', lbl, tid,
+  //      tbl/row/meta — записът, или run() — само на телефона; now() — веднага (напр. noteClose); back() — обратното на now/run
+  //      при „Отмени“; pre() — точно преди изпращането (метрики); done(r), fail(e); redo() — „Отмени“ връща листа с текста [К22]}
+  // Записът влиза в опашката ВЕДНАГА като задържан → картата отива в крайното си състояние веднага, броячите го броят;
+  // тръгва от undoCommit(): след UNDO_MS, при скриване, смяна на таб/ден/обект, „Одобрявам“, всеки друг send().
+  var UNDO = {}, UNDO_MS = 5000;   // РП избра 2 с на 28.09, защото картата чакаше; сега нищо не чака — лентата само стои долу 5 с (О6)
+  var SHU = null;                  // „Отмени“ на отворения лист („❓ Искането е записано“, „✉ Питай“) — на пауза, докато листът е отворен
   function undoStart(u) {
-    if (UNDO[u.key]) undoCommit(u.key);
+    commitUndos();   // едно „Отмени“ наведнъж: чакащото досега тръгва (лентата показва новото)
     u.t0 = Date.now(); u.at = nowIso(); u.qid = newQid();
-    u.timer = setTimeout(function () { undoCommit(u.key); }, UNDO_MS);
     UNDO[u.key] = u;
+    if (u.tbl) enqueue(u.tbl, u.row, u.meta, u.at, u.qid, true);   // в опашката от първия миг — задържан [т.1]
+    if (u.now) u.now();
+    if (u.run) u.run();
+    u.timer = setTimeout(function () { undoCommit(u.key); }, UNDO_MS);
     undoPaint(u, 'start');
   }
   function undoCancel(key) {
     var u = UNDO[key]; if (!u) return;
     clearTimeout(u.timer); delete UNDO[key];
+    if (SHU === key) SHU = null;
+    if (u.tbl) {
+      var it = findQ(u.qid);
+      // вече е пуснат (или изпратен) → нищо не се връща [т.6]
+      if (!it || !isHeld(it)) { undoPaint(u, 'commit'); toast('Вече е записано — отмени от Задачи'); return; }
+      dropQ(u.qid);
+    }
+    if (u.back) u.back();
     undoPaint(u, 'cancel');
     if (u.redo) u.redo();   // „Отмени“ след лист → листът се връща с написания текст (записът с текст от РП не се губи) [К22]
   }
-  // След 5 с, при скриване, смяна на таб/ден: ПЪРВО опашката (синхронно в localStorage), после мрежата [К22]
+  // задържаният → пуснат (hold и pauza вън); редът в опашката е същият [К2]
+  function unHold(qid) {
+    setQueue(queue().map(function (x) { if (x.qid !== qid) return x; var y = Object.assign({}, x); delete y.hold; delete y.pauza; return y; }));
+  }
+  // flush, докато записът тръгне (или остане по истинска причина): flush може вече да тече и да е спрял на него, преди да е пуснат
+  function flushFor(qid, n) {
+    return flush(true).then(function () {
+      var x = findQ(qid);
+      if (x && !x.err && !isHeld(x) && (n || 0) < 3 && !FL.net && !offNow() && navigator.onLine && (DEMO || (db && user))) return flushFor(qid, (n || 0) + 1);
+    });
+  }
+  // След 5 с, при скриване, смяна на таб/ден: пуска задържания (вече е в опашката — НИКОГА второ enqueue), после мрежата [т.7, К22]
   function undoCommit(key) {
     var u = UNDO[key]; if (!u) return;
     clearTimeout(u.timer); delete UNDO[key];
+    if (SHU === key) SHU = null;
+    if (!u.tbl) { undoPaint(u, 'commit'); return; }
+    if (findQ(u.qid)) unHold(u.qid);
     if (u.pre) u.pre();
-    if (u.run) { u.run(); undoPaint(u, 'commit'); return; }
-    var p = send(u.tbl, u.row, u.meta, { qid: u.qid, at: u.at, keep: true });
     undoPaint(u, 'commit');
-    p.then(function (r) { if (u.done) u.done(r); if (r === 'queued') toast((u.lbl || 'Записано') + ' · ⏳ чака връзка'); renderTabs(); },
-      function (e) { if (u.fail) u.fail(e); toast('Не се записа: ' + errBg(e) + ' — виж лентата горе', 'bad'); renderCurrent(); });
+    FL.net = false;
+    flushFor(u.qid).then(function () {
+      var x = findQ(u.qid);
+      if (!x) { if (u.done) u.done('sent'); renderTabs(); return; }
+      if (x.err) { if (u.fail) u.fail({ code: x.code, message: x.err, bg: x.err }); toast('Не се записа: ' + x.err + ' — виж лентата горе', 'bad'); renderCurrent(); return; }
+      if (u.done) u.done('queued');
+      if (offNow() || FL.net || !navigator.onLine) { if (FL.net && !S.offline) setOffline(); toast((u.lbl || 'Записано') + ' · ⏳ чака връзка'); }
+      renderTabs(); renderBanners();
+    });
   }
   function commitUndos() { Object.keys(UNDO).forEach(undoCommit); }
+  // Пауза, докато листът над записа е отворен (pauza в опашката само за сведение — flush и без това не го праща) [т.10]
+  function undoPause(key) {
+    var u = UNDO[key]; if (!u || u.paused) return;
+    clearTimeout(u.timer); u.timer = null; u.paused = true;
+    if (u.tbl) setQueue(queue().map(function (x) { return x.qid === u.qid ? Object.assign({}, x, { pauza: true }) : x; }));
+    ubPaint(true);
+  }
+  function undoResume(key) {
+    var u = UNDO[key]; if (!u || !u.paused) return;
+    u.paused = false; u.t0 = Date.now();
+    if (u.tbl) setQueue(queue().map(function (x) { if (x.qid !== u.qid) return x; var y = Object.assign({}, x); delete y.pauza; return y; }));
+    u.timer = setTimeout(function () { undoCommit(u.key); }, UNDO_MS);
+    ubPaint(true);
+  }
+  // Лентата #undoBar — една, над табовете; показва последното чакащо „Отмени“; докато е видима, екранът получава отстъп долу [т.5]
+  function ubEl() {
+    var b = document.getElementById('undoBar');
+    if (!b) { b = document.createElement('div'); b.id = 'undoBar'; b.className = 'undobar'; b.setAttribute('role', 'status'); b.hidden = true; document.body.appendChild(b); }
+    return b;
+  }
+  function ubPaint(force) {
+    var u = null, b = ubEl();
+    Object.keys(UNDO).forEach(function (k) { if (!u || UNDO[k].t0 >= u.t0) u = UNDO[k]; });
+    if (!u) { if (!b.hidden) { b.hidden = true; b._k = null; b.innerHTML = ''; document.body.classList.remove('ub-on'); } return; }
+    var k = u.key + ':' + u.t0;
+    if (force || b._k !== k) {
+      b._k = k;
+      b.innerHTML = '<span class="ub-l">' + esc(u.lbl) + '</span><button type="button" class="ub-b" data-a="undo" data-k="' + esc(u.key) + '">Отмени</button>' +
+        '<i class="ub-p' + (u.paused ? ' pz' : '') + '" style="animation-duration:' + Math.max(0, UNDO_MS - (Date.now() - u.t0)) + 'ms" aria-hidden="true"></i>';
+    }
+    b.hidden = false; document.body.classList.add('ub-on');
+    document.documentElement.style.setProperty('--ubh', Math.round(b.getBoundingClientRect().height || 56) + 'px');
+  }
+  // Начало/отмяна: картата отива в крайното си състояние ВЕДНАГА (или се връща); пускане: само лентата и значките [т.4]
   function undoPaint(u, ph) {
-    if (u.kind === 'toast') { if (ph === 'start') toastUndo(u); else toastUndoEnd(u.key); }
+    ubPaint();
     // листът „❓ Искането е записано“ е още отворен, а записът тръгна (скрито приложение) → бутонът отменя вече записаната задача
     if (ph === 'commit' && sheetKind === 'isk' && ISK && ISK.key === u.key && sheetEl) { var ib = sheetEl.querySelector('[data-a="iskUndo"]'); if (ib) ib.textContent = 'Отмени задачата'; }
-    if (view === 'day' && (u.kind === 'pc' || u.kind === 'grp')) {
-      if (ph === 'commit' && u.kind === 'pc') pcLeave(u.tid);
+    if (ph === 'commit') { renderTabs(); renderBanners(); if (view === 'deistviq') renderActsTab(); else if (view === 'day') { renderActs(); renderIzt(); } return; }
+    if (view === 'day') {
+      var t = u.kind === 'pc' && u.tid != null ? findT(u.tid) : null;
+      // картата излиза веднага (свиване 180 ms) → „Прегледани“; плочките „остават N“ и лентата — без да чакат свиването
+      if (ph === 'start' && t && pregledana(t)) { renderSum(); renderAppr(); renderStrip(); pcLeave(u.tid); }
       else keepAnchor(function () { renderSum(); renderGroups(); });
-      renderAppr(); renderStrip();
-      if (u.kind === 'pc') { renderFull(); if (WIDE) renderPan(); }   // 🚫 → редът излиза от „Пълен запис“ след 2 с
+      renderAppr(); renderStrip(); renderFull(); renderIzt(); renderActs();
+      if (WIDE) renderPan();
     }
-    if (u.kind === 'pc' && sheetKind === 'mdk') mdkRefresh();
-    if (ph === 'start' && view === 'deistviq' && WIDE) renderZadPan();
-    if (view === 'tablo' && u.kind === 'dc') { renderOpen(true); renderTabloCounts(); }
-    if (ph !== 'start') { renderTabs(); if (view === 'deistviq') renderActsTab(); else if (view === 'day') renderActs(); }
-  }
-  // Тост с „Отмени“ (записи без карта) — натиска се: .toast.undo е с pointer-events:auto [К23]
-  function toastUndo(u) {
-    var bx = $('#toasts'); if (!bx) return;
-    var t = document.createElement('div'); t.className = 'toast undo'; t.setAttribute('data-uk', u.key);
-    t.innerHTML = '<span class="tu-l">' + esc(u.lbl) + '</span><button type="button" class="tu-b" data-a="undo" data-k="' + esc(u.key) + '">Отмени</button><i class="u-bar" aria-hidden="true"></i>';
-    bx.appendChild(t);
-  }
-  function toastUndoEnd(k) {
-    Array.prototype.forEach.call(document.querySelectorAll('.toast.undo'), function (t) {
-      if (t.getAttribute('data-uk') !== k) return;
-      t.classList.add('out'); setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 300);
-    });
+    if (sheetKind === 'mdk') mdkRefresh();
+    if (view === 'deistviq') { renderActsTab(); }
+    if (view === 'tablo') { renderOpen(true); renderTabloCounts(); }
+    renderTabs(); renderBanners();
   }
   // Картата излиза от списъка (свиване 180 ms) и се появява в „✓ Решени/Прегледани“; над видимото — без анимация и
   // екранът не мърда (котвата е следващият елемент) [К23]
@@ -1459,19 +1782,23 @@
   // ---------- решения по точка (Преглед) ----------
   // ✓ Отговорено (решение, всеки ден — вписаният запис не се пипа) · ✓ Вярно (незаключен ден) · ✓ Видях (само на телефона) [§5.2]
   function pcOk(tid) {
-    var t = findT(tid), d = S.den; if (!t || !d || UNDO['pc:' + tid]) return;
+    var t = findT(tid), d = S.den; if (!t || !d) return;
     if (newPending()) { toast('Има нова версия — натисни „Презареди“ първо.', 'bad'); return; }
     var res = t.grupa === 'reshenie';
     if (!res && (locked() || t.istina === 'provereno')) { pcSeen(tid); return; }
+    if (mine(tid).ok) return;   // вече е потвърдено (и задържаното в опашката)
     var row = { den_id: d.id, tochka_id: tid, vid: 'potvardi', versiq: d.versiq, hesh: d.hesh || null, ustroistvo: device() };
     if (res) row.tekst = 'отговорено';
     var o = d.obekt || OBEKT_KOD, data = d.data;
     undoStart({ key: 'pc:' + tid, kind: 'pc', tid: tid, lbl: res ? '✓ Отговорено' : '✓ Вярно', tbl: 'resheniq', row: row, meta: { tt: t.tekst },
-      pre: function () { if (res) noteClose(tid, o, data, true, null); } });   // Таблото я скрива веднага
+      now: function () { if (res) noteClose(tid, o, data, true, null); },   // Таблото я скрива веднага
+      back: function () { if (res) unClose(tid); } });
   }
+  // „Отмени“ на затваряне, което още не е стигнало базата → решението пак е отворено и на Таблото
+  function unClose(tid) { var c = TB.closed[tid]; if (c && !c.sent) { delete TB.closed[tid]; saveTablo(); } }
   // 📘 ⇄ 🚫 — пише 'izkljuchi' / 'vkljuchi' в resheniq (тригерът в базата сменя tochki.v_dnevnika веднага) [007]
   function pcDn(tid) {
-    var t = findT(tid), d = S.den; if (!t || !d || UNDO['pc:' + tid] || !dnMozhe(t)) return;
+    var t = findT(tid), d = S.den; if (!t || !d || !dnMozhe(t)) return;
     if (newPending()) { toast('Има нова версия — натисни „Презареди“ първо.', 'bad'); return; }
     if (locked()) { dnLkToast(); return; }
     var vk = !vDn(t);   // сега е изключена → връщам я
@@ -1521,7 +1848,6 @@
     if (!pts.length || !S.den) return;
     MK = { ks: ks, den: S.den.id };
     openSheet(pts.length === 1 ? 'От коя точка е този ред' : 'От кои точки е този ред', '<div id="mkB">' + mdkBody() + '</div>', 'mdk');
-    mdkBars();
   }
   var GR_IME = { promqna: 'промяна', reshenie: 'за решение', neprovereno: 'непроверено', fakt: 'факт' };
   function mdkBody() {
@@ -1529,29 +1855,25 @@
     var lk = locked(), q = queue(), seen = {}, pts = [];
     MK.ks.forEach(function (k) { var t = findTk(k); if (t && dnMozhe(t) && !seen[t.id]) { seen[t.id] = 1; pts.push(t); } });
     return pts.map(function (t) {
-      var vd = vDn(t, q), u = UNDO['pc:' + t.id], m = mine(t.id, q);
+      var vd = vDn(t, q), m = mine(t.id, q);
+      // Етап 6: изборът се вижда веднага; „Отмени“ — в лентата долу [§5.6 т.11]
       return '<div class="mk-i' + (vd ? '' : ' izk') + '"><div class="mk-h"><span aria-hidden="true">' + emoT(t) + '</span><span class="pill p-neutral">' + esc(GR_IME[t.grupa] || t.grupa || 'точка') + '</span>' +
           (t.grupa !== 'fakt' ? '<span class="small muted">има карта в групите</span>' : '') + '</div>' +
         '<p class="mk-t">' + esc(t.tekst) + '</p>' + (m.dnNe ? dnNeHtml(m.dnNe) : '') +
-        (u ? '<div class="mk-ua"><span class="pc-u">' + esc(u.lbl) + '</span><button type="button" class="pa pc-ub" data-a="undo" data-k="pc:' + esc(t.id) + '">Отмени</button><i class="u-bar" data-ub="pc:' + esc(t.id) + '" aria-hidden="true"></i></div>'
-          : '<div class="mk-b">' + dnBtn(t, vd, lk) + '</div>') + '</div>';
+        '<div class="mk-b">' + dnBtn(t, vd, lk) + '</div></div>';
     }).join('') + (MK.ks.length > 1 ? '<p class="small muted">Ред с няколко точки остава в записа, докато поне една е „в дневника“.</p>' : '');
   }
-  function mdkRefresh() { var b = sheetKind === 'mdk' && sheetEl ? sheetEl.querySelector('#mkB') : null; if (b) { putH(b, mdkBody()); mdkBars(); } }
-  function mdkBars() {
-    if (!sheetEl) return;
-    Array.prototype.forEach.call(sheetEl.querySelectorAll('[data-ub]'), function (b) { var u = UNDO[b.getAttribute('data-ub')]; if (u) b.style.animationDuration = Math.max(0, UNDO_MS - (Date.now() - u.t0)) + 'ms'; });
-  }
+  function mdkRefresh() { var b = sheetKind === 'mdk' && sheetEl ? sheetEl.querySelector('#mkB') : null; if (b) putH(b, mdkBody()); }
   // „✓ Видях“ — локална отметка: не твърди „вярно“, не пише в базата и по вписан ден [К25]
   function pcSeen(tid) {
-    var d = S.den; if (!d || UNDO['pc:' + tid]) return;
-    undoStart({ key: 'pc:' + tid, kind: 'pc', tid: tid, lbl: '✓ Видях', run: function () { vidMark(d.id, [tid]); } });
+    var d = S.den; if (!d || vidOf(d.id, tid)) return;
+    undoStart({ key: 'pc:' + tid, kind: 'pc', tid: tid, lbl: '✓ Видях', run: function () { vidMark(d.id, [tid]); }, back: function () { vidUnmark(d.id, [tid]); } });
   }
   function pcSeenAll(g) {
     var d = S.den; if (!d || !groupsOf()[g]) return;
-    var q = queue(), ids = groupsOf()[g].filter(function (t) { return !pregledana(t, q) && !undoing(t); }).map(function (t) { return t.id; });
+    var q = queue(), ids = groupsOf()[g].filter(function (t) { return !pregledana(t, q); }).map(function (t) { return t.id; });
     if (!ids.length) return;
-    undoStart({ key: 'grp:' + g, kind: 'grp', lbl: '✓ Видях ' + ids.length, run: function () { vidMark(d.id, ids); } });
+    undoStart({ key: 'grp:' + g, kind: 'grp', lbl: '✓ Видях ' + ids.length, run: function () { vidMark(d.id, ids); }, back: function () { vidUnmark(d.id, ids); } });
   }
 
   // ---------- „✎ Поясни“ — поправка или разяснение към точка (т. 2.4) — от Преглед и от Таблото [§5.4, К27] ----------
@@ -1603,7 +1925,8 @@
     var redo = function () { openPoyasni(t, d, P0.from, mode, tx); };
     if (P0.from === 'dc') { dcStart(t, lbl, 'resheniq', row, redo); return; }
     undoStart({ key: 'pc:' + t.id, kind: 'pc', tid: t.id, lbl: lbl, tbl: 'resheniq', row: row, meta: { tt: t.tekst }, redo: redo,
-      pre: function () { if (t.grupa === 'reshenie') noteClose(t.id, d.obekt || OBEKT_KOD, d.data, false, null); } });
+      now: function () { if (t.grupa === 'reshenie') noteClose(t.id, d.obekt || OBEKT_KOD, d.data, false, null); },
+      back: function () { if (t.grupa === 'reshenie') unClose(t.id); } });
   }
   // ---------- „Източници“: целият текст на съобщението/мейла, снимките му, файловете, Тиймс, мейл [§7] ----------
   // Адресите се рисуват само ако минат проверката (иначе — нищо): Тиймс съобщение, OneDrive (без името на фирмата в кода),
@@ -1707,7 +2030,10 @@
     el.innerHTML = '<div class="pan-c g-' + esc(t.grupa) + '"><div class="pan-h"><span class="pan-l">Избрана точка</span>' + (G ? '<span class="pan-g">' + esc(G.t) + '</span>' : '') + '</div>' +
       '<div class="pan-t"><span class="pc-e" aria-hidden="true">' + emoT(t) + '</span><p>' + esc(t.tekst) + '</p></div>' +
       '<div class="pan-p"><span class="pill ' + ist[1] + '">' + ist[0] + '</span>' + (hot ? '<span class="pill p-bad">⚠️ важно</span>' : '') + '</div>' +
-      '<div id="panPh"></div></div>' +
+      '<div id="panPh"></div>' +
+      // Етап 6 [§5.4]: „✉ Питай“ и „→ Задача“ и от панела „Избрана точка“
+      '<div class="pan-a"><button type="button" class="btn ghost sb" data-a="pitaiT" data-tid="' + esc(t.id) + '">✉ Питай по мейл</button>' +
+        '<button type="button" class="btn ghost sb" data-a="act" data-tid="' + esc(t.id) + '">→ Задача</button></div></div>' +
       '<h3 class="pan-s">Източници' + (izv.length ? ' (' + izv.length + ')' : '') + '</h3>' +
       (izv.length ? '<div class="pan-src" id="panSrc">' + srcCardsHtml(izv) + '</div><p class="small muted">Оригиналите са в OneDrive, в папката на деня.</p>' : '<p class="grp-e">Точката няма източник.</p>');
     panPhFill();
@@ -1810,6 +2136,13 @@
       if (x.t && x.t.id != null) b += '<button type="button" class="btn ghost sb" data-a="iskSrc" data-si="' + i + '">❓ Поискай информация</button>';
       return [h, '<div class="src-b">' + b + '</div>' + okoloHtml(i, x)];
     }
+    // Етап 6 [§3.3, §5.3 б]: източник „Интранет“ с tid → „🗂️ Интранет · #7888“ + „Задачата ›“
+    if (kanalOf(s.tip) === 'intranet' && /^\d{1,6}$/.test(String(s.tid == null ? '' : s.tid))) {
+      izInit(); var izr = izFind(+s.tid);
+      return ['<div class="src-i"><span class="ref">' + esc(s.n) + '</span><div><div class="src-t">🗂️ <b>Интранет · #' + esc(s.tid) + '</b>' + (s.vreme ? ' · <span class="mono">' + esc(s.vreme) + '</span>' : '') + '</div>' +
+        (izr ? '<div>' + esc(izr.opisanie) + ' <span class="pill ' + (IZ_ST[izr.status] || 'p-neutral') + '">' + esc(izr.status || '—') + '</span></div>' : '') + '</div></div>',
+        '<div class="src-b"><button type="button" class="btn ghost sb" data-a="izad" data-tid="' + esc(s.tid) + '">Задачата ›</button></div>'];
+    }
     var base = srcItem(s);
     if (f) {
       var fm = x.files ? (x.files[f] || x.files[f.split('/').pop()]) : null;
@@ -1874,18 +2207,576 @@
     var s = x.izv[i], k = s ? srcKey(s) : null, r = k ? saobPick(k, x.den) : null, t = x.t;
     var avtor = r ? (r.avtor || '') : String(s && s.kratko || '').split(' · ')[0];
     var ctx = { src: 'isk', tid: t.id, den_id: x.den, tekst: t.tekst, o: x.o, izvori: t.izvori,
-      isk: { avtor: avtor, nishka: r ? (r.vid === 'mail' ? 'имейл' : (r.izvor || '')) : (/^Поща$/i.test(s && s.tip || '') ? 'имейл' : ''), izvor_vid: r ? (r.vid === 'mail' ? 'mail' : r.izvor_vid) : null, kluch: k,
+      isk: { avtor: avtor, nishka: r ? (r.vid === 'mail' ? 'имейл' : (r.izvor || '')) : (kanalOf(s && s.tip) === 'mail' ? 'имейл' : ''), izvor_vid: r ? (r.vid === 'mail' ? 'mail' : r.izvor_vid) : null, kluch: k,
         link: r && r.vid !== 'mail' && okTeams(r.link) ? r.link : null, mail: r && r.vid === 'mail' && MAIL_RE.test(String(r.avtor || '').trim()) ? { adr: String(r.avtor).trim(), tema: r.tema || '' } : null } };
     openPlus(null, ctx, 'iskane');
   }
 
+  // ---------- Етап 6 [§5.2, F1]: „🗂️ Източниците на деня“ — всичко, дошло за деня, и къде е влязло ----------
+  // Един компонент за Преглед (#izt, контекст 'd:<den_id>') и за листа „📥 Днес досега“ (контекст 'n:<обект>:<дата>', само четене,
+  // §5.14). При отваряне — само ключовете на деня (една малка заявка, за броевете); редовете — при разгъване, по 30 [§5.2, Р11];
+  // движението в Интранета — при разгъване. Нищо ново в кеша на Ден — само в паметта (+ SAOB, за листа „Източници“).
+  var IZ6 = {}, IZ6_STR = 30, IZTS = null;   // IZTS — контекстът на отворения лист „📥 Днес досега“
+  var IZ6_B = { teams: ['💬', 'Тиймс'], mail: ['✉️', 'Мейл'] };
+  function iztF() { return lget(K6.iztF) === 'vsichki' ? 'vsichki' : 'neizp'; }   // по подразбиране — „Неизползвани“ (въпросът на РП)
+  function iztX(key, o) {
+    if (IZ6[key]) return IZ6[key];
+    var ks = Object.keys(IZ6);   // паметта на iPhone: до 12 дни (най-старият отворен излиза)
+    if (ks.length >= 12) delete IZ6[ks.filter(function (k) { return k !== IZTS; })[0]];
+    return (IZ6[key] = Object.assign({ key: key, k: null, kSt: '', kErr: null, kAt: 0, kTok: 0, open: {}, shown: { teams: IZ6_STR, mail: IZ6_STR },
+      full: {}, rows: {}, rSt: {}, rAt: {}, rErr: null, dv: null, dvSt: '', dvErr: null, dvAt: 0 }, o));
+  }
+  function iztDen() { var d = S.den; return d ? iztX('d:' + d.id, { mode: 'den', den: d.id, o: d.obekt || OBEKT_KOD, data: d.data }) : null; }
+  function iztRecent(x) { var y = now(); y.setDate(y.getDate() - 1); return !!x.data && x.data >= ymd(y); }
+  // ключовете (id, kluch, vid, vreme) — една малка заявка; без покритие — „📴“; повторен опит най-рано след 30 с (без порой)
+  function iztKLoad(x, force) {
+    if (!x || x.kSt === 'load') return;
+    if (!force && (x.k || x.kSt === 'missing' || ((x.kSt === 'net' || x.kSt === 'err') && Date.now() - x.kAt < 30000))) return;
+    if (offNow() || !api || (!DEMO && (!db || !user))) { if (!x.k) x.kSt = 'net'; x.kAt = Date.now(); return; }
+    var tok = ++x.kTok; x.kSt = 'load'; x.kErr = null;
+    (x.mode === 'dnes' ? api.saobDnesK(x.o, x.data) : api.saobDenK(x.den)).then(function (rows) {
+      if (tok !== x.kTok) return;
+      x.k = rows || []; x.kSt = 'ok'; x.kAt = Date.now(); iztPaint(x);
+    }, function (e) {
+      if (tok !== x.kTok) return;
+      x.kSt = isMissing(e) || isNoCol(e) ? 'missing' : isNet(e) || isAuth(e) ? 'net' : 'err'; x.kErr = e; x.kAt = Date.now(); iztPaint(x);
+    });
+  }
+  // целите редове на показаните (по ид, до 30 наведнъж) → и в SAOB (същите отварят „N източника ›“ без нова заявка)
+  function iztRowsLoad(x, b, ids) {
+    var need = ids.filter(function (id) { return !x.rows[id]; }).slice(0, IZ6_STR);
+    if (!need.length || x.rSt[b] === 'load') return;
+    if ((x.rSt[b] === 'net' || x.rSt[b] === 'err') && Date.now() - (x.rAt[b] || 0) < 30000) return;
+    if (offNow()) { x.rSt[b] = 'net'; x.rAt[b] = Date.now(); return; }
+    x.rSt[b] = 'load';
+    api.saobIds(need).then(function (rows) {
+      (rows || []).forEach(function (r) { x.rows[r.id] = r; });
+      need.forEach(function (id) { if (!x.rows[id]) x.rows[id] = { id: id, _nema: true }; });   // изтрит междувременно — не се тегли пак
+      saobPut(rows, x.o);
+      x.rSt[b] = 'ok'; iztPaint(x);
+    }, function (e) { x.rSt[b] = isNet(e) || isAuth(e) ? 'net' : 'err'; x.rAt[b] = Date.now(); x.rErr = e; iztPaint(x); });
+  }
+  function iztDvLoad(x, force) {
+    if (!x || x.dvSt === 'load' || (!force && (x.dv || x.dvSt === 'missing' || ((x.dvSt === 'net' || x.dvSt === 'err') && Date.now() - x.dvAt < 30000)))) return;
+    if (offNow() || !api || (!DEMO && (!db || !user))) { if (!x.dv) x.dvSt = 'net'; x.dvAt = Date.now(); return; }
+    x.dvSt = 'load';
+    api.dvizh(x.o, x.data).then(function (rows) { x.dv = rows || []; x.dvSt = 'ok'; iztIzList(x.dv); iztPaint(x); },
+      function (e) { x.dvSt = isMissing(e) || isNoCol(e) ? 'missing' : isNet(e) || isAuth(e) ? 'net' : 'err'; x.dvErr = e; x.dvAt = Date.now(); iztPaint(x); });
+  }
+  // „създадена ЧЧ:ММ“ на новата задача (tochna) идва от списъка на Интранета (Етап 5) — при нова сесия той още не е зареден →
+  // теглим го веднъж (кешът му важи; след неуспех — не пак, без порой); izPaint() дорисува блока [§5.2, ПОПРАВКА 13.10]
+  function iztIzList(dv) {
+    if (!dv.some(function (r) { return r.tochnost === 'tochna'; })) return;
+    izInit(); if (!IZT.rows && !IZT.busy && !IZT.st) izLoad();
+  }
+  function iztPaint(x) {
+    if (x.mode === 'den') { if (view === 'day' && S.den && 'd:' + S.den.id === x.key) renderIzt(); return; }
+    if (sheetKind === 'izt' && IZTS === x.key) iztSheetPaint();
+    if (view === 'tablo') renderDnes();
+  }
+  // ключ на съобщение → точките му; tid → точките с източник „Интранет“ (§3.3 — покритието е по tid) — само текущата версия
+  function iztUsed(x) {
+    var u = { k: {}, iz: {} };
+    if (x.mode !== 'den' || !S.den || S.den.id !== x.den) return u;
+    function put(m, k, t) { var l = m[k] || (m[k] = []); if (l.indexOf(t) < 0) l.push(t); }
+    S.tochki.forEach(function (t) {
+      (t.izvori || []).forEach(function (s) {
+        var k = srcKey(s); if (k) put(u.k, k, t);
+        if (s && kanalOf(s.tip) === 'intranet' && /^\d{1,6}$/.test(String(s.tid == null ? '' : s.tid))) put(u.iz, +s.tid, t);
+      });
+    });
+    return u;
+  }
+  function iztSt(st, e, xk, what) {
+    if (st === 'missing') return '<p class="izt-e">' + what + ' още не са в облака.</p>';
+    if (st === 'net') return '<p class="izt-e">📴 ' + what + ' — когато има покритие.</p>';
+    if (st === 'err') return '<div class="err">Не се заредиха: ' + esc(errBg(e)) + '</div><button type="button" class="btn ghost izt-r" data-a="iztRetry" data-x="' + esc(xk) + '">Опитай пак</button>';
+    return '<p class="izt-e"><span class="pulse" aria-hidden="true"></span> Зареждам…</p>';
+  }
+  function renderIzt() {
+    var el = box('#izt'); if (!el) return;
+    var x = view === 'day' ? iztDen() : null;
+    if (!x) { el.innerHTML = ''; return; }
+    iztKLoad(x);
+    el.innerHTML = '<div class="izt card"><div class="izt-hh"><h2>🗂️ Източниците на деня</h2>' +
+      '<button type="button" class="izt-i" data-a="kakDn" aria-label="Как се прави дневникът">ⓘ</button></div>' +
+      '<p class="izt-s">Всичко, което е дошло за деня — и къде е влязло.</p>' + iztBody(x) + '</div>';
+  }
+  function iztBody(x) {
+    var u = iztUsed(x), h = '';
+    if (x.k && !x.k.length && x.mode === 'den' && iztRecent(x)) h += '<p class="izt-e">Съобщенията за деня идват със сутрешния пуск.</p>';
+    return h + iztBlock(x, 'teams', u) + iztBlock(x, 'mail', u) + iztBlockIz(x, u) + iztPrisRow(x);
+  }
+  function iztHdr(x, b, lbl, on, off) {
+    return '<button type="button" class="izt-b" data-a="iztTgl" data-x="' + esc(x.key) + '" data-b="' + b + '" aria-expanded="' + !!on + '"' + (off ? ' disabled' : '') + '>' +
+      '<span class="izt-c" aria-hidden="true">' + (on ? '▾' : '▸') + '</span><span class="izt-l">' + lbl + '</span></button>';
+  }
+  // Тиймс / Мейл: „💬 Тиймс (41) · 12 не са използвани“; разгънат — „Неизползвани N · Всички N“, редове по час, по 30
+  function iztBlock(x, b, u) {
+    var B = IZ6_B[b], all = x.k ? x.k.filter(function (r) { return r.vid === b; }) : null, dn = x.mode === 'den';
+    var nU = all && dn ? all.filter(function (r) { return !u.k[r.kluch]; }).length : 0, off = !!all && !all.length, on = !!x.open[b] && !off;
+    var lbl = B[0] + ' ' + B[1] + (all ? ' (' + all.length + ')' : x.kSt === 'net' || x.kSt === 'missing' || x.kSt === 'err' ? '' : ' …') +
+      (nU ? ' · ' + nU + ' ' + pl(nU, 'не е използвано', 'не са използвани') : '');
+    var h = iztHdr(x, b, esc(lbl), on, off);
+    if (!on) return h;
+    if (!all) return h + '<div class="izt-in">' + iztSt(x.kSt, x.kErr, x.key, 'Съобщенията') + '</div>';
+    var f = dn ? iztF() : 'vsichki', L = all.filter(function (r) { return f === 'vsichki' || !u.k[r.kluch]; });
+    var c = '';
+    if (dn) c += '<div class="izt-f" role="group" aria-label="Кои съобщения">' +
+      '<button type="button" class="chip" data-a="iztF" data-v="neizp" aria-pressed="' + (f === 'neizp') + '">Неизползвани <span class="cn">' + nU + '</span></button>' +
+      '<button type="button" class="chip" data-a="iztF" data-v="vsichki" aria-pressed="' + (f === 'vsichki') + '">Всички <span class="cn">' + all.length + '</span></button></div>';
+    if (!L.length) return h + '<div class="izt-in">' + c + '<p class="izt-e">✓ Всичко от ' + (b === 'teams' ? 'Тиймс' : 'мейла') + ' е влязло в точки.</p></div>';
+    var n = Math.min(x.shown[b] || IZ6_STR, L.length), ids = L.slice(0, n).map(function (r) { return r.id; });
+    iztRowsLoad(x, b, ids);
+    c += '<div class="izt-ls">' + ids.map(function (id) { var r = x.rows[id]; return r && !r._nema ? iztRow(x, r, u) : ''; }).join('') + '</div>';
+    var miss = ids.filter(function (id) { return !x.rows[id]; }).length;
+    if (miss) c += x.rSt[b] === 'net' ? '<p class="izt-e">📴 Съобщенията — когато има покритие.</p>'
+      : x.rSt[b] === 'err' ? '<div class="err">Не се заредиха: ' + esc(errBg(x.rErr)) + '</div><button type="button" class="btn ghost izt-r" data-a="iztRetry" data-x="' + esc(x.key) + '" data-b="' + b + '">Опитай пак</button>'
+      : '<p class="izt-e"><span class="pulse" aria-hidden="true"></span> Зареждам…</p>';
+    else if (L.length > n) c += '<button type="button" class="btn ghost izt-more" data-a="iztMore" data-x="' + esc(x.key) + '" data-b="' + b + '">Покажи още ' + Math.min(IZ6_STR, L.length - n) + ' (остават ' + (L.length - n) + ')</button>';
+    return h + '<div class="izt-in">' + c + '</div>';
+  }
+  function iztRow(x, r, u) {
+    var mail = r.vid === 'mail', xk = esc(x.key), fl = Array.isArray(r.failove) ? r.failove.length : 0;
+    var hd = mail ? '✉️ ' + hm(r.vreme) + ' · ' + (r.avtor || '—') + (r.tema ? ' · „' + clip(r.tema, 80) + '“' : '')
+      : '💬 ' + hm(r.vreme) + ' · ' + (r.avtor || '—') + (r.izvor ? ' · ' + r.izvor : '');
+    // до 6 реда (≈ 260 зн. на телефона); по-дълъг → свит + „Покажи целия ›“ (празните редове в свития изглед — един)
+    var tx = String(r.tekst || ''), lng = !x.full[r.id] && (tx.length > 260 || tx.split('\n').length > 6);
+    var b = '';
+    if (!mail && okTeams(r.link)) b += extA(r.link, 'btn ghost sb', 'Отвори в Тиймс ›', 'teams');
+    if (mail && okOd(r.original_url)) b += extA(r.original_url, 'btn ghost sb', 'Целият мейл ›', 'od');
+    if (x.mode === 'dnes') b += '<button type="button" class="btn ghost sb" data-a="iztPitai" data-x="' + xk + '" data-id="' + esc(r.id) + '">✉ Питай</button>';
+    return '<article class="iz6-r" data-id="' + esc(r.id) + '"><div class="iz6-hd">' + esc(hd) + '</div>' +
+      (tx ? '<div class="iz6-tx' + (lng ? ' cl' : '') + '">' + esc(lng ? clip(tx.replace(/\n\s*\n+/g, '\n'), 400) : tx) + '</div>'
+        : '<div class="iz6-tx muted">' + (r.snimki_broi ? '(само снимки)' : '(без текст)') + '</div>') +
+      (lng ? '<button type="button" class="lnk" data-a="iztFull" data-x="' + xk + '" data-id="' + esc(r.id) + '">Покажи целия ›</button>' : '') +
+      (r.snimki_broi || fl ? '<div class="iz6-m">' + (r.snimki_broi ? '📷 ' + esc(r.snimki_broi) + ' ' + pl(+r.snimki_broi, 'снимка', 'снимки') : '') + (r.snimki_broi && fl ? ' · ' : '') + (fl ? '📎 ' + fl + ' ' + pl(fl, 'файл', 'файла') : '') + '</div>' : '') +
+      iztStatus(x, r.kluch, u.k[r.kluch], false) + (b ? '<div class="iz6-b">' + b + '</div>' : '') + '</article>';
+  }
+  // „→ влязло в“ / „не е използвано · ➕“ / „⏳ ще се добави…“ / „✓ добавено в черновата ›“ / „✕ …“ [§3.1, §5.2]
+  function iztStatus(x, key, pts, info) {
+    if (x.mode !== 'den' || !key) return '';
+    var ds = dobState(x.den, key), d = S.den;
+    if (ds && ds.st === 'ok') return '<button type="button" class="iz6-go ok" data-a="iztDobGo" data-k="' + (ds.k != null ? ds.k : '') + '">✓ добавено в черновата ›</button>';
+    if (pts && pts.length) return pts.map(function (t) {
+      return '<button type="button" class="iz6-go" data-a="iztGo" data-tid="' + esc(t.id) + '">→ влязло в: „' + esc(clip(t.tekst, 60)) + '“' + (vDn(t) ? '' : ' (не влиза в дневника)') + ' ›</button>';
+    }).join('');
+    if (info) return '';
+    if (ds && ds.st === 'pend') return '<p class="iz6-p">⏳ ще се добави в този ден със сутрешния пуск (09:00) — после одобряваш новата версия</p>';
+    if (ds && ds.st === 'err') return '<button type="button" class="iz6-p warn" data-a="qerr">⚠️ не се записа — виж</button>';
+    if (ds && ds.st === 'ne') return '<p class="iz6-p ne">✕ ' + esc(ds.rez) + '</p>';
+    if (!d || d.id !== x.den) return '';
+    if (locked() || d.status !== 'chernova') return '<p class="iz6-p">не е използвано · ' + (d.status === 'vpisana' ? 'Денят е вписан' : 'Денят е одобрен') + ' — записът вече не се мени.</p>';
+    return '<div class="iz6-n"><span>не е използвано</span><button type="button" class="iz6-dob" data-a="iztDob" data-k="' + esc(key) + '">➕ Включи в дневника</button></div>';
+  }
+  // „➕ Включи в дневника“ за ключа на деня: опашката (и задържаният), иначе последното dobavi в S.res [§3.1]
+  function dobState(den, key) {
+    var st = null, last = null;
+    queue().forEach(function (it) { if (it.tbl === 'resheniq' && it.row && it.row.vid === 'dobavi' && it.row.den_id === den && it.row.tekst === key) st = it.err ? { st: 'err' } : { st: 'pend' }; });
+    if (st) return st;
+    if (S.den && S.den.id === den) S.res.forEach(function (r) { if (r.vid === 'dobavi' && r.tekst === key) last = r; });
+    if (!last) return null;
+    if (!last.obraboteno && (!last.rezultat || /чака Claude/i.test(last.rezultat))) return { st: 'pend' };   // необработено (и „чака Claude“)
+    var rz = String(last.rezultat || ''), m = /точка\s+(\d+)/i.exec(rz);
+    if (/^(нанесено|вече е)/i.test(rz)) return { st: 'ok', k: m ? +m[1] : null };
+    return { st: 'ne', rez: rz || 'не е нанесено' };
+  }
+  // колко „➕“ още чакат сутрешния пуск (опашката + необработените в базата) — за листа „Одобряваш ли деня?“ [§3.1]
+  function dobaviCakat(den) {
+    var n = 0, kl = {};
+    queue().forEach(function (it) { if (it.tbl === 'resheniq' && !it.err && it.row && it.row.vid === 'dobavi' && it.row.den_id === den) { n++; if (it.row.klient_id) kl[it.row.klient_id] = 1; } });
+    if (S.den && S.den.id === den) S.res.forEach(function (r) { if (r.vid === 'dobavi' && !r.obraboteno && (!r.rezultat || /чака Claude/i.test(r.rezultat)) && !(r.klient_id && kl[r.klient_id])) n++; });
+    return n;
+  }
+  function iztRowOf(key) { var x = iztDen(), out = null; if (!x) return null; Object.keys(x.rows).forEach(function (id) { if (x.rows[id].kluch === key) out = x.rows[id]; }); return out; }
+  function iztDob(key) {
+    var d = S.den, x = iztDen(); if (!d || !x || !key) return;
+    if (locked() || d.status !== 'chernova') { dnLkToast(); return; }
+    if (newPending()) { toast('Има нова версия — натисни „Презареди“ първо.', 'bad'); return; }
+    if (dobState(d.id, key)) return;
+    var tt, m = /^iz:(\d+)$/.exec(key);
+    if (m) { var dv = (x.dv || []).filter(function (r) { return String(r.id) === m[1]; })[0]; tt = dv ? 'Интранет #' + dv.tid + ' · ' + dvKakvo(dv) : key; }
+    else { var r = iztRowOf(key); tt = r ? hm(r.vreme) + ' · ' + (r.avtor || '') + ': ' + clip(oneLine(r.tekst || r.tema || '').trim(), 160) : key; }
+    var row = { den_id: d.id, tochka_id: null, vid: 'dobavi', tekst: key, versiq: d.versiq, hesh: d.hesh || null, ustroistvo: device() };
+    undoStart({ key: 'dob:' + key, kind: 'toast', lbl: '➕ Ще се добави в този ден', tbl: 'resheniq', row: row, meta: { tt: tt } });
+  }
+  // „→ влязло в“: картата на екрана, светва 1,5 с (и в свитите „Прегледани“); факт (без карта) → редът му в „📄 Пълен запис“ [§5.2]
+  function iztGo(tid) {
+    var t = findT(tid); if (!t) return;
+    if (t.grupa === 'fakt' || !GRUPI.some(function (G) { return G.k === t.grupa; })) { fullGo(t); return; }
+    if (pregledana(t)) { S.revOpen[t.grupa] = true; S.revCard[t.id] = true; renderGroups(); }
+    var el = document.querySelector('#groups .pc[data-tid="' + t.id + '"]');
+    if (!el) { toast('Картата я няма в тази версия'); return; }
+    flashEl(el);
+    if (WIDE) panSelect(t.id);
+  }
+  function fullGo(t) {
+    if (t.k == null) { toast('Фактът няма свой ред в пълния запис.'); return; }
+    if (!vDn(t)) S.izkShow = true;   // не влиза в дневника → редът е задраскан, но да се вижда
+    S.fullOpen = true; renderFull();
+    var l = Array.prototype.filter.call(document.querySelectorAll('#full [data-k]'), function (n) { return String(n.getAttribute('data-k')).split(',').indexOf(String(t.k)) >= 0; })[0];
+    if (!l) { var fd = $('#fullD'); if (fd) flashEl(fd); toast('Редът не е в пълния запис на тази версия.'); return; }
+    flashEl(l);
+  }
+  function flashEl(el) {
+    var tw = $('.topwrap'), off = (tw ? tw.getBoundingClientRect().height : 0) + 12;
+    window.scrollTo({ top: Math.max(0, el.getBoundingClientRect().top + (window.pageYOffset || 0) - off), behavior: reduced() ? 'auto' : 'smooth' });
+    el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+    setTimeout(function () { el.classList.remove('flash'); }, 1600);
+  }
+  function iztDobGo(k) {
+    var t = k ? findTk(+k) : null;
+    if (!t) { toast(S.newVersiq > (S.den ? S.den.versiq : 0) ? 'Точката е в новата версия — натисни „Презареди“.' : 'Точката я няма в тази версия.'); return; }
+    iztGo(t.id);
+  }
+  // Интранет: „#7888 · описание“ / „статус: Текуща → Завършена · между 12:03 и 14:05“ [§3.2, §5.2]
+  var DV_INFO = { izchezna: 'вече не е в списъка', varnata: 'върната в списъка', poqvi: 'появи се в списъка (стара задача)' };
+  function dvDat(s, kr) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(s || '')); return m ? m[3] + '.' + m[2] + (kr ? '' : '.' + m[1]) : '—'; }
+  function dvKakvo(r) {
+    var a = r.staro, b = r.novo;
+    switch (r.vid) {
+      case 'nova': return 'нова задача' + (r.otgovornik ? ' · отговорник ' + r.otgovornik : '') + (r.srok ? ' · срок ' + dvDat(r.srok, true) : '');
+      case 'status': return 'статус: ' + (a || '—') + ' → ' + (b || '—');
+      case 'zavarshena': return 'завършена' + (a ? ' (беше: ' + a + ')' : '');
+      case 'srok': return !a ? 'поставен срок ' + dvDat(b) : !b ? 'срокът е махнат (беше ' + dvDat(a) + ')' : 'срок: ' + dvDat(a) + ' → ' + dvDat(b);
+      case 'otgovornik': return 'отговорник: ' + (a || '—') + ' → ' + (b || '—');
+      case 'komentari': return 'нов коментар';
+    }
+    return DV_INFO[r.vid] || r.vid;
+  }
+  function dvKoga(r) {
+    if (r.tochnost === 'tochna') { izInit(); var iz = izFind(r.tid); return iz && iz.sazdadena ? 'създадена ' + hm(iz.sazdadena) : ''; }
+    var b = new Date(r.okno_do), a = r.okno_ot ? new Date(r.okno_ot) : null, d0 = parseD(r.data_sabitie);
+    function f(d) { return isNaN(d) ? '—' : sameDay(d, d0) ? hhmm(d) : ddmm(d) + ' ' + hhmm(d); }
+    return a && !isNaN(a) ? 'между ' + f(a) + ' и ' + f(b) : 'видяно ' + f(b);
+  }
+  function iztBlockIz(x, u) {
+    var on = !!x.open.iz, h = iztHdr(x, 'iz', '🗂️ Интранет' + (x.dv ? ' (' + x.dv.length + ')' : ''), on, false);
+    if (!on) return h;
+    var c;
+    if (!x.dv) c = x.dvSt === 'missing' ? '<p class="izt-e">Движението в Интранета още не е в облака — лаптопът го събира.</p>'
+      : x.dvSt === 'net' ? '<p class="izt-e">📴 Движението в Интранета — когато има покритие.</p>'
+      : x.dvSt === 'err' ? '<div class="err">Не се зареди: ' + esc(errBg(x.dvErr)) + '</div><button type="button" class="btn ghost izt-r" data-a="iztRetry" data-x="' + esc(x.key) + '" data-b="iz">Опитай пак</button>'
+      : '<p class="izt-e"><span class="pulse" aria-hidden="true"></span> Зареждам…</p>';
+    else if (!x.dv.length) c = '<p class="izt-e">Няма движение по задачите за този ден.</p>';
+    else c = '<div class="izt-ls">' + x.dv.map(function (r) {
+      var info = !!DV_INFO[r.vid], kg = dvKoga(r);
+      return '<article class="iz6-r' + (info ? ' siv' : '') + '"><div class="iz6-hd iz6-iz"><b>#' + esc(r.tid) + '</b> · ' + esc(r.opisanie || '') + '</div>' +
+        '<div class="iz6-dv">' + esc(dvKakvo(r)) + (kg ? ' · <span class="muted">' + esc(kg) + '</span>' : '') + '</div>' +
+        iztStatus(x, 'iz:' + r.id, u.iz[+r.tid], info) +
+        '<div class="iz6-b"><button type="button" class="btn ghost sb" data-a="izad" data-tid="' + esc(r.tid) + '">Задачата ›</button></div></article>';
+    }).join('') + '</div>';
+    return h + '<div class="izt-in">' + c + '</div>';
+  }
+  // Присъствия — не е блок със съдържание: картата „👷 Присъствия“ вече е над картите; тап → скрол до нея с подсветка
+  function iztPrisRow(x) {
+    if (!prisOk()) return '';
+    var p = prisOf(x.o, x.data), lbl = '👷 Присъствия · ' + (p ? 'нето ' + p.neto + ' · общо ' + p.obshto : 'няма запис за деня');
+    if (x.mode !== 'den') return '<div class="izt-b st"><span class="izt-c" aria-hidden="true">▸</span><span class="izt-l">' + esc(lbl) + '</span></div>';
+    return '<button type="button" class="izt-b" data-a="iztPris"><span class="izt-c" aria-hidden="true">▸</span><span class="izt-l">' + esc(lbl) + ' ›</span></button>';
+  }
+  function iztPris() { var p = $('#pris .pris-c') || $('#pris'); if (p) flashEl(p); }
+  function iztTgl(xk, b) {
+    var x = IZ6[xk]; if (!x) return;
+    x.open[b] = !x.open[b];
+    if (x.open[b] && b === 'iz') iztDvLoad(x);
+    if (x.open[b] && !x.k) iztKLoad(x, x.kSt !== 'load');
+    iztPaint(x);
+  }
+  function iztRetry(xk, b) {
+    var x = IZ6[xk]; if (!x) return;
+    if (b === 'iz') { x.dvSt = ''; iztDvLoad(x, true); }
+    else if (b) { x.rSt[b] = ''; x.rAt[b] = 0; }
+    else iztKLoad(x, true);
+    iztPaint(x);
+  }
+  function iztMore(xk, b) { var x = IZ6[xk]; if (!x) return; x.shown[b] = (x.shown[b] || IZ6_STR) + IZ6_STR; iztPaint(x); }
+  function iztFull(xk, id) { var x = IZ6[xk]; if (!x) return; x.full[id] = true; iztPaint(x); }
+  function iztFSet(v) {
+    lset(K6.iztF, v === 'vsichki' ? 'vsichki' : '');
+    Object.keys(IZ6).forEach(function (k) { IZ6[k].shown = { teams: IZ6_STR, mail: IZ6_STR }; });
+    renderIzt();
+  }
+
+  // ---------- Етап 6 [§5.14, F12]: „📥 Днес досега“ на Таблото — съобщенията на днешния ден преди черновата (по обект + дата) ----------
+  function dnesX(o) { var d = ymd(now()); return iztX('n:' + o + ':' + d, { mode: 'dnes', den: null, o: o, data: d }); }
+  function dnesLoad() { ['ag', 'soft'].forEach(function (o) { var x = dnesX(o); if (!x.k || Date.now() - x.kAt > 60000) iztKLoad(x, true); }); }
+  function renderDnes() {
+    var el = box('#tb-dnes'); if (!el) return;
+    var os = TB.sel === 'all' ? ['ag', 'soft'] : [TB.sel];
+    var sv = ['teams', 'poshta'].map(svOf).filter(Boolean).map(function (s) { return Date.parse(s.posledno); }).filter(function (t) { return !isNaN(t); });
+    var ob = sv.length ? rel(new Date(Math.max.apply(null, sv)).toISOString()) : '—';
+    el.innerHTML = os.map(function (o) {
+      var x = dnesX(o), k = x.k;
+      if (!k && (x.kSt === 'missing' || (x.kSt === 'net' && offNow()))) return '';
+      var nt = k ? k.filter(function (r) { return r.vid === 'teams'; }).length : null, nm = k ? k.filter(function (r) { return r.vid === 'mail'; }).length : null;
+      return '<button type="button" class="dnes o-' + o + '" data-a="dnesOpen" data-o="' + o + '" aria-label="' + esc('Днес досега, ' + OBEKT[o][0] + ': Тиймс ' + (nt == null ? '—' : nt) + ', мейли ' + (nm == null ? '—' : nm) + ', обновено ' + ob) + '">' +
+        '<span class="ochip o-' + o + '">' + SELK[o] + '</span><span class="dnes-t">📥 Днес досега: 💬 ' + (nt == null ? '…' : nt) + ' · ✉️ ' + (nm == null ? '…' : nm) +
+        ' · <span class="muted">обновено ' + esc(ob) + '</span></span><span class="dnes-go" aria-hidden="true">›</span></button>';
+    }).join('');
+  }
+  function openDnes(o) {
+    if (o !== 'ag' && o !== 'soft') return;
+    var x = dnesX(o);
+    IZTS = x.key;
+    x.open.teams = x.open.teams !== false; x.open.mail = x.open.mail !== false;   // в листа — разгънати
+    iztKLoad(x, true);
+    openSheet('📥 Днес досега · ' + OBEKT[o][0], '<p class="small muted izt-zt">Утре в 09:00 това ще влезе в черновата.</p><div id="iztS" class="izt sh">' + iztBody(x) + '</div>', 'izt');
+  }
+  function iztSheetPaint() { var x = IZTS && IZ6[IZTS], b = sheetEl && sheetKind === 'izt' ? sheetEl.querySelector('#iztS') : null; if (x && b) putH(b, iztBody(x)); }
+  function iztPitai(xk, id) {
+    var x = IZ6[xk], r = x && x.rows[id]; if (!r || r._nema) return;
+    openPitai({ t: null, tid: null, den_id: null, o: x.o, data: x.data, rows: [r], fakt: (r.tema ? r.tema + ': ' : '') + oneLine(r.tekst || '').trim(), ctx: { src: 'dnes' } });
+  }
+
+  // ---------- Етап 6 [§5.9, F6]: „Как се прави дневникът“ — карта в Настройки и същото в лист от ⓘ ----------
+  var KAK_DN = [
+    ['Какво влиза в дневника.', '„📄 Пълен запис“ е точно това, което отива в Word. Всяка карта е един или няколко реда в него. Карта с „🚫 Не включвай“ не влиза. Празен раздел не се пише изобщо.'],
+    ['Как се пише всяка сутрин (09:00).', 'Лаптопът събира вчерашния ден: Тиймс, мейлите и приложенията им, Присъствия, Интранета, снимките. После три помощника: първият пише черновата и резюмето, вторият я проверява ред по ред срещу съобщенията, третият поправя това, което проверителят е намерил. Черновата идва тук; ти я преглеждаш и натискаш „Одобрявам“ — лаптопът я вписва в Word.'],
+    ['Резюмето.', 'В Word раздел 1 „Управленско резюме“ е няколко кратки реда с най-важното от деня (пари, срокове, инвеститор, безопасност, спиране на работа). Всеки ред идва от картите под него — махнеш ли карта с „🚫“, махаш и реда ѝ в резюмето. Горе на деня в AiLab има и 1–2 изречения само за теб — те не отиват в Word.'],
+    ['Интранетът.', 'Движението по задачите за обекта влиза в раздел 7 „Задачи и срокове“: завършена задача, сменен срок, отговорник или статус — всяко на свой кратък ред, който можеш да махнеш поотделно; новите задачи — един общ ред с номерата им (важната нова задача — на свой ред). Най-много 8 реда на ден; пълният списък е в „🗂️ Източниците на деня“ › Интранет. Коментарите в Интранета AiLab не ги вижда.'],
+    ['Какво НЕ влиза.', 'Поздрави, „ок“, уточнения без нов факт, повторения; съобщения, които не са станали точка. Виж ги в „🗂️ Източниците на деня“ — ако нещо липсва, „➕ Включи в дневника“: сутрешният пуск (09:00) го добавя в същия ден като нова версия. Не одобрявай деня преди това — иначе няма да влезе.'],
+    ['Броят хора', 'е нетото от Присъствия. Ако там няма запис — по сутрешния рапорт.']
+  ];
+  function kakDnHtml() { return '<div class="kak-dn">' + KAK_DN.map(function (p) { return '<p><b>' + esc(p[0]) + '</b> ' + esc(p[1]) + '</p>'; }).join('') + '</div>'; }
+  function openKakDn() { openSheet('Как се прави дневникът', kakDnHtml(), 'kak'); }
+
+  // ---------- Етап 6 [§5.4, F4]: „✉ Питай по мейл“ — мейл до избран човек: „има ли отговор / развитие?“ ----------
+  // Първият избор в листа „→ Задача“ (без нов бутон на картата). AiLab само отваря чернова (mailto: / Outlook) — праща РП.
+  // Задачата „искане“ (danni.kanal = 'mail', ключът е adresati — не do) се записва при ПЪРВОТО натискане на бутон; листът остава
+  // отворен, „Отмени“ в лентата е на пауза, докато листът е отворен [§5.6 т.10]. Адресната книга — само в паметта [§7].
+  var ADR = null, ADR_ST = '', PIT = null, PT_SRC = 0;
+  var MAIL_G = /[^\s@<>"',;:\[\]]+@[^\s@<>"',;:\[\]]+\.[a-z]{2,}/gi;
+  // име → сравнимо: малки букви, кирилицата → латиница (обтекаемата система — TRL), без точки и двойни интервали
+  function nmNorm(s) { return String(s || '').toLowerCase().replace(/[а-яѝёэы]/g, function (c) { return TRL[c] || c; }).replace(/[^a-z0-9]+/g, ' ').trim(); }
+  function adrLoad() {
+    if (ADR || ADR_ST === 'load' || ADR_ST === 'missing' || !api) return;
+    if (offNow() || (!DEMO && (!db || !user))) { ADR_ST = 'net'; return; }
+    ADR_ST = 'load';
+    api.adresi().then(function (rows) {
+      ADR = (rows || []).map(function (r) { return { adres: String(r.adres || '').trim().toLowerCase(), ime: r.ime || null, broi: +r.broi || 0, n: nmNorm(r.ime) }; })
+        .filter(function (r) { return MAIL_RE.test(r.adres); });
+      ADR_ST = 'ok'; ptChips();
+    }, function (e) { ADR_ST = isMissing(e) || isNoCol(e) ? 'missing' : 'err'; ptChips(); });
+  }
+  function adrIme(a) { a = String(a || '').toLowerCase(); var r = ADR ? ADR.filter(function (y) { return y.adres === a; })[0] : null; return r ? r.ime : null; }
+  // Тиймс име → адрес: точно (след нормализиране) → първа буква + фамилия („D. Tehnik“) → резервно фамилията (≥ 4 букви) в адреса
+  function adrByName(ime) {
+    var n = nmNorm(ime), w = n.split(' ').filter(Boolean);
+    if (!ADR || !w.length) return [];
+    var ex = ADR.filter(function (a) { return a.n && a.n === n; });
+    if (ex.length) return [ex[0]];
+    if (w.length >= 2) {
+      var ini = ADR.filter(function (a) { var v = a.n ? a.n.split(' ') : []; return v.length >= 2 && v[v.length - 1] === w[w.length - 1] && v[0].charAt(0) === w[0].charAt(0); });
+      if (ini.length) return [ini[0]];
+    }
+    var fam = w[w.length - 1];
+    return fam.length >= 4 ? ADR.filter(function (a) { return a.adres.split('@')[0].indexOf(fam) >= 0; }).slice(0, 2).map(function (a) { return Object.assign({ fam: true }, a); }) : [];
+  }
+  // без самия РП: адрес с име = името от Интранета (vid 'az'), запомнените с „Това съм аз“, адресът на входа
+  function ptAz() {
+    var m = {}, az = spAz(), an = az ? nmNorm(az.ime) : '';
+    (ljget(K6.az, []) || []).forEach(function (a) { m[String(a).toLowerCase()] = 1; });
+    if (user && user.email) m[String(user.email).toLowerCase()] = 1;
+    if (an && ADR) ADR.forEach(function (a) { if (a.n && a.n === an) m[a.adres] = 1; });
+    return { adr: m, ime: an };
+  }
+  // редовете на източниците (съобщенията) — от SAOB; без ред → името от „kratko“ (за търсене по име)
+  function ptRows(x) {
+    if (x.rows) return x.rows;
+    var out = [];
+    (x.izv || []).forEach(function (s) {
+      var ch = kanalOf(s && s.tip); if (ch !== 'teams' && ch !== 'mail') return;
+      var k = srcKey(s), r = k ? saobPick(k, x.den_id) : null;
+      if (r) { if (out.indexOf(r) < 0) out.push(r); return; }
+      var nm = String(s.kratko || '').split(' · ')[0].trim();
+      if (nm && (!k || SAOB[k])) out.push({ vid: 'teams', avtor: nm, _kr: true });
+    });
+    return out;
+  }
+  // „Кому“: авторите на източниците (мейл — адресът; Тиймс — по име от книгата), после „Копие:“ — до 6, без повторения
+  function ptSugg(x) {
+    var out = [], seen = {}, noA = [], az = ptAz(), kop = [];
+    function add(a, ime, src, fam) {
+      a = String(a || '').trim().toLowerCase();
+      if (!MAIL_RE.test(a) || seen[a] || az.adr[a] || out.length >= 6) return;
+      seen[a] = 1; out.push({ adres: a, ime: ime || null, src: src, fam: !!fam });
+    }
+    ptRows(x).forEach(function (r) {
+      if (r.vid === 'mail') {
+        add(r.avtor, adrIme(r.avtor), 'avtor');
+        (String(r.do_kopie || '').match(MAIL_G) || []).forEach(function (a) { kop.push(a); });
+        return;
+      }
+      var nm = String(r.avtor || '').trim();
+      if (!nm || /^workflows$/i.test(nm) || (az.ime && nmNorm(nm) === az.ime)) return;   // ботът и самият РП — не
+      var f = adrByName(nm);
+      if (!f.length) { if (ADR && !r._kr && noA.indexOf(nm) < 0) noA.push(nm); return; }
+      f.forEach(function (a) { add(a.adres, a.ime || nm, 'avtor', a.fam); });
+    });
+    kop.forEach(function (a) { add(a, adrIme(a), 'kopie'); });
+    return { list: out, noA: noA.slice(0, 3) };
+  }
+  // текстовете по подразбиране [§5.4]
+  function ptDat(x) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(x.data || '')); return m ? m[3] + '.' + m[2] + '.' + m[1] : ''; }
+  function ptKoi(x) { var o = x.o ? OBEKT[x.o][0] : '', d = ptDat(x); return [o, d].filter(Boolean).join(', '); }
+  function ptTemaDef(x) { var k = ptKoi(x); return 'Въпрос: ' + clip(oneLine(x.fakt).trim(), 60) + (k ? ' (' + k + ')' : ''); }
+  function ptTekstDef(x) {
+    var d = ptDat(x), o = x.o ? OBEKT[x.o][0] : '';
+    return 'Здравейте,\n\nВъв връзка с ' + (d ? d + (o ? ' (' + o + ')' : '') + ': ' : '') + '„' + clip(oneLine(x.fakt).trim(), 400) + '“\n\n' +
+      'Има ли отговор или развитие по въпроса? Ако има документ или нов срок — моля, изпратете ги.\n\nБлагодаря!';
+  }
+  // o: {t, tid, den_id, o, data, izv | rows, fakt, ctx, zamenq, adresati, tema, k}
+  function openPitai(o) {
+    PIT = { tid: o.tid || null, k: o.k != null ? o.k : (o.t && o.t.k != null ? o.t.k : null), den_id: o.den_id != null ? o.den_id : null, o: o.o === 'ag' || o.o === 'soft' ? o.o : null,
+      data: o.data || null, izv: o.izv || (o.t && o.t.izvori) || [], rows: o.rows || null, fakt: String(o.fakt || (o.t && o.t.tekst) || ''), ctx: o.ctx || null, zamenq: o.zamenq || null,
+      sel: {}, init: false, pre: Array.isArray(o.adresati) ? o.adresati : null, sug: null, key: null, ruchno: '', tema: '', tekst: '' };
+    PIT.tema = o.tema || ptTemaDef(PIT); PIT.tekst = ptTekstDef(PIT);
+    spisaciLoad(false); adrLoad(); ptSrcLoad(PIT);
+    ptOpen();
+  }
+  function ptOpen() {
+    var x = PIT, ios = /iPhone|iPad|iPod/.test(navigator.userAgent || '') || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent || ''));
+    openSheet('✉ Питай за развитие', '<p class="sh-q">' + esc(clip(x.fakt, 300)) + '</p>' +
+      '<div class="fld" role="group" aria-label="Кому">Кому<div id="ptK" class="pt-k"></div>' +
+        '<input type="email" inputmode="email" id="ptTo" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="адрес@… — може няколко, с „;“" aria-label="Друг адрес" value="' + esc(x.ruchno) + '"></div>' +
+      '<label class="fld">Тема<input type="text" id="ptTema" maxlength="200" autocomplete="off" value="' + esc(x.tema) + '"></label>' +
+      '<label class="fld">Текст<textarea id="ptTx" rows="8">' + esc(x.tekst) + '</textarea></label>' +
+      '<div class="err" id="ptE" hidden></div><p class="pt-ok" id="ptS"' + (x.key ? '' : ' hidden') + '>✓ Въпросът е записан в Задачи › Искания</p>' +
+      '<button type="button" class="btn big" data-a="ptGo" data-k="mail">Отвори в пощата ›</button>' +
+      (ios ? '<button type="button" class="lnk pt-ol" data-a="ptGo" data-k="ol">в Outlook ›</button>' : '') +
+      '<button type="button" class="btn ghost" data-a="ptGo" data-k="copy">Копирай текста</button>' +
+      '<p class="small muted">Нищо не се праща от AiLab — пращаш ти от Outlook. Въпросът се пази в Задачи › Искания и сутрешният пуск отбелязва, когато дойде отговор.</p>', 'pitai');
+    ptChips();
+  }
+  // текстовете на източниците (авторите, „Копие:“) — заявка М1 само за липсващите
+  function ptSrcLoad(x) {
+    if (x.rows) return;
+    var keys = [];
+    (x.izv || []).forEach(function (s) { var k = srcKey(s); if (k && keys.indexOf(k) < 0 && SAOB[k] === undefined) keys.push(k); });
+    if (!keys.length || offNow() || !api) return;
+    PT_SRC++;
+    api.saob(x.o, keys).then(function (rows) {
+      PT_SRC--; saobPut(rows, x.o); keys.forEach(function (k) { if (SAOB[k] === undefined) SAOB[k] = []; }); if (PIT === x) ptChips();
+    }, function (e) { PT_SRC--; if (isMissing(e) || isNoCol(e)) keys.forEach(function (k) { SAOB[k] = []; }); if (PIT === x) ptChips(); });
+  }
+  // чиповете „Кому“ — само тази част се пречертава (написаното в полетата остава)
+  function ptChips() {
+    var b = sheetEl && sheetKind === 'pitai' ? sheetEl.querySelector('#ptK') : null, x = PIT;
+    if (!b || !x) return;
+    var s = ptSugg(x), busy = ADR_ST === 'load' || PT_SRC > 0;
+    (x.pre || []).slice().reverse().forEach(function (a) { var ad = String(a && a.adres || '').toLowerCase(); if (MAIL_RE.test(ad) && !s.list.some(function (y) { return y.adres === ad; })) s.list.unshift({ adres: ad, ime: a.ime || null, src: 'staro' }); });
+    x.sug = s;
+    // предварително избран — първият останал с адрес; чак когато книгата и източниците са дошли (иначе редът се мени) [§5.4]
+    if (!x.init && (!busy || x.pre)) {
+      x.init = true;
+      if (x.pre) x.pre.forEach(function (a) { if (a && a.adres) x.sel[String(a.adres).toLowerCase()] = true; });
+      else if (s.list.length) x.sel[s.list[0].adres] = true;
+    }
+    var h = s.list.map(function (c, i) {
+      var on = !!x.sel[c.adres];
+      return '<span class="pt-cw"><button type="button" class="chip pt-c" data-a="ptChip" data-i="' + i + '" aria-pressed="' + on + '">' + (on ? '✓ ' : '') + esc(c.ime ? c.ime + ' · ' + c.adres : c.adres) + (c.fam ? ' (по фамилия)' : '') + '</button>' +
+        '<button type="button" class="lnk pt-az" data-a="ptAzSet" data-i="' + i + '" aria-label="' + esc('Това съм аз — ' + c.adres) + '">Това съм аз</button></span>';
+    }).join('') + s.noA.map(function (n) { return '<span class="chip pt-c off" aria-disabled="true">' + esc(n) + ' — няма мейл в архива</span>'; }).join('');
+    if (!s.list.length && !s.noA.length) h += busy ? '<p class="small muted"><span class="pulse" aria-hidden="true"></span> търся адресите…</p>' : '<p class="small muted">Няма предложения — напиши адреса.</p>';
+    putH(b, h);
+  }
+  function ptChip(i) { var x = PIT, c = x && x.sug && x.sug.list[+i]; if (!c) return; x.init = true; x.sel[c.adres] = !x.sel[c.adres]; ptChips(); }
+  function ptAzSet(i) {
+    var x = PIT, c = x && x.sug && x.sug.list[+i]; if (!c) return;
+    var l = ljget(K6.az, []) || []; if (l.indexOf(c.adres) < 0) l.push(c.adres); ljset(K6.az, l.slice(-20));
+    delete x.sel[c.adres]; x.init = true; ptChips();
+    toast('Запомних — „' + c.adres + '“ вече не се предлага.');
+  }
+  function ptRead() {
+    var x = PIT, ee = $('#ptE'); if (!x || !ee) return null;
+    x.ruchno = ($('#ptTo') && $('#ptTo').value) || ''; x.tema = (($('#ptTema') && $('#ptTema').value) || '').trim(); x.tekst = ($('#ptTx') && $('#ptTx').value) || '';
+    var adrs = [], bad = null;
+    (x.sug ? x.sug.list : []).forEach(function (c) { if (x.sel[c.adres] && adrs.indexOf(c.adres) < 0) adrs.push(c.adres); });
+    x.ruchno.split(/[;,\s]+/).map(function (s) { return s.trim(); }).filter(Boolean).forEach(function (a) {
+      if (!MAIL_RE.test(a)) { if (!bad) bad = a; } else if (adrs.indexOf(a.toLowerCase()) < 0) adrs.push(a.toLowerCase());
+    });
+    function err(m) { ee.textContent = m; ee.hidden = false; try { ee.scrollIntoView({ block: 'nearest' }); } catch (e) {} return null; }
+    if (bad) return err('Адресът „' + clip(bad, 60) + '“ не изглежда като мейл.');
+    if (!adrs.length) return err('Избери или напиши до кого.');
+    if (!x.tema) return err('Напиши тема.');
+    ee.hidden = true;
+    return { adrs: adrs, tema: x.tema, tx: x.tekst };
+  }
+  // адресът на писмото: всеки адрес — encodeURIComponent поотделно, с некодирана „,“; новите редове — %0D%0A; таван 1 900 знака
+  // (Chrome на Windows не подава по-дълъг адрес): първо се реже фактът в текста, после — само Кому и Тема, текстът в клипборда [§5.4]
+  function ptUrl(kind, adrs, tema, tx, fakt) {
+    function mk(body) {
+      var to = adrs.map(encodeURIComponent).join(','), q = 'subject=' + encodeURIComponent(tema) + (body != null ? '&body=' + encodeURIComponent(String(body).replace(/\r?\n/g, '\r\n')) : '');
+      return kind === 'ol' ? 'ms-outlook://compose?to=' + to + '&' + q : 'mailto:' + to + '?' + q;
+    }
+    var u = mk(tx); if (u.length <= 1900) return { url: u };
+    var f = clip(oneLine(fakt).trim(), 400), q0 = '„' + f + '“';
+    if (f && tx.indexOf(q0) >= 0) {
+      for (var n = f.length - 40; n >= 40; n -= 40) { var u2 = mk(tx.replace(q0, '„' + clip(f, n) + '“')); if (u2.length <= 1900) return { url: u2 }; }
+    }
+    return { url: mk(null), copy: tx };
+  }
+  function ptNav(url) {
+    if (DEMO) { window.AILAB_PITAI_URL = url; toast('Демо: тук се отваря пощата с готова чернова (адресът е ' + url.length + ' знака).'); return; }
+    var a = document.createElement('a'); a.href = url; a.rel = 'noopener'; a.style.display = 'none'; document.body.appendChild(a); a.click(); a.remove();
+  }
+  // първото натискане на бутон → задачата (втори ред не се прави); после — пощата / клипборда
+  function ptGo(kind) {
+    var x = PIT; if (!x) return;
+    var v = ptRead(); if (!v) return;
+    ptRecord(x, v);
+    if (kind === 'copy') {
+      copyText('Кому: ' + v.adrs.join('; ') + '\nТема: ' + v.tema + '\n\n' + v.tx).then(function (ok) { toast(ok ? 'Копирано — постави в Outlook.' : 'Не можах да копирам — задръж върху текста и го копирай.'); });
+      return;
+    }
+    var r = ptUrl(kind, v.adrs, v.tema, v.tx, x.fakt);
+    if (r.copy) copyText(r.copy).then(function () {});
+    ptNav(r.url);
+    if (r.copy) toast('Текстът е дълъг — копиран е, постави го в писмото (Ctrl+V).');
+  }
+  function ptRecord(x, v) {
+    if (x.key) return;
+    var ad = v.adrs.map(function (a) { var c = (x.sug ? x.sug.list : []).filter(function (y) { return y.adres === a; })[0]; return { adres: a, ime: (c && c.ime) || adrIme(a) || null }; });
+    var k1 = (x.rows && x.rows[0] && x.rows[0].kluch) || (x.izv || []).map(srcKey).filter(Boolean)[0] || null;
+    var row = { den_id: x.den_id, tochka_id: x.tid || null, vid: 'iskane', tekst: 'Въпрос до ' + v.adrs[0] + ': ' + clip(oneLine(x.fakt).trim(), 160), chovek: v.adrs[0], srok: null,
+      izvor: 'AiLab · Питай', obekt: x.o, cel: null, danni: { kanal: 'mail', adresati: ad, tema: v.tema, pitano: nowIso(), kluch: k1, tochka_k: x.k != null ? x.k : null } };
+    if (x.zamenq) row.zamenq = x.zamenq;
+    var redo = function () {
+      x.key = null;
+      if (PIT === x && sheetKind === 'pitai') { var s = $('#ptS'); if (s) s.hidden = true; return; }
+      PIT = x; ptOpen();   // „Отмени“ след затворен лист → листът се връща с написаното [К22]
+    };
+    x.key = zadaStart(row, '✉ Питане записано', x.tid, x.ctx && x.ctx.src === 'tablo' ? x.ctx : (x.ctx && x.ctx.src === 'zad' ? null : x.ctx), redo, null);
+    shuPause(x.key);
+    var s0 = $('#ptS'); if (s0) s0.hidden = false;
+  }
+  // „→ Задача“ → „✉ Питай по мейл“: от точка в Преглед, от решение/промяна в Табло, от панела „Избрана точка“
+  function pitaiFromPlus() {
+    var p = P; if (!p) return;
+    P = null;
+    var ctx = p.ctx, t = !ctx && p.tid ? findT(p.tid) : null;
+    openPitai({ t: t, tid: p.tid, den_id: p.den_id, o: p.o, data: ctx ? (ctx.d || null) : (S.den ? S.den.data : null), izv: p.izvori || [], fakt: p.tekst, ctx: ctx,
+      k: ctx && ctx.k != null ? ctx.k : (t ? t.k : null) });
+  }
+  function pitaiT(tid) { var t = findT(tid), d = S.den; if (!t || !d) return; openPitai({ t: t, tid: t.id, den_id: d.id, o: d.obekt || OBEKT_KOD, data: d.data, izv: t.izvori || [], fakt: t.tekst }); }
+  // „Промени“ на питане по мейл → същият лист с данните му (не формата „Искане“ — тя чете danni.do.id) [§5.4]
+  function openPitaiZad(a) {
+    var d = danniOf(a), t = a.tochka_id != null ? (findT(a.tochka_id) || tFind(a.tochka_id)) : null;
+    var dn = a.den_id != null ? (dniById(a.den_id) || findDni(a.den_id) || (S.den && S.den.id === a.den_id ? S.den : null)) : null;
+    openPitai({ t: t, tid: a.tochka_id || null, den_id: a.den_id != null ? a.den_id : null, o: objOf(a), data: dn ? dn.data : null, izv: t ? t.izvori || [] : [],
+      fakt: t ? t.tekst : String(a.tekst || '').replace(/^Въпрос до [^:]+:\s*/, ''), ctx: { src: 'zad' }, zamenq: a.id, adresati: d.adresati, tema: d.tema, k: d.tochka_k });
+  }
+
   // ---------- свежест на източниците (лист и картата в Настройки) ----------
   function freshHtml() {
-    var list = sortSv(S.svezhest);
-    return (list.length ? list.map(function (s) {
-      var f = fresh(s), nm = IZ[s.izvor] || [s.izvor, '•'];
-      var p = f ? '<span class="pill p-ok">✓ свеж</span>' : '<span class="pill p-warn">⚠️ ' + (s.ok === false ? 'грешка при събиране' : 'застарял') + '</span>';
-      return '<div class="fr-i ' + (f ? 'ok' : 'old') + '"><span class="fr-e" aria-hidden="true">' + nm[1] + '</span><div><div><b>' + esc(nm[0]) + '</b> ' + p + '</div>' +
+    var list = sortSv(S.svezhest), sp = svSpi();
+    // лаптопът спи → един сив ред горе; кехлибарено само застарялото преди заспиването, останалите — с часа си, без ⚠️ [§5.7]
+    return (sp.spi && list.length ? '<p class="fr-sleep">' + esc(spiTxt(sp)) + '</p>' : '') + (list.length ? list.map(function (s) {
+      var old = svWarn(s, sp), nm = IZ[s.izvor] || [s.izvor, '•'];
+      var p = old ? '<span class="pill p-warn">⚠️ ' + (s.ok === false ? 'грешка при събиране' : 'застарял') + '</span>'
+        : sp.spi ? (s.izvor === 'laptop' ? '<span class="pill p-neutral">💤 спи</span>' : '') : '<span class="pill p-ok">✓ свеж</span>';
+      return '<div class="fr-i ' + (old ? 'old' : sp.spi ? 'calm' : 'ok') + '"><span class="fr-e" aria-hidden="true">' + nm[1] + '</span><div><div><b>' + esc(nm[0]) + '</b> ' + p + '</div>' +
         '<div class="small muted">последно: <span class="mono">' + esc(s.posledno ? dm(s.posledno) : '—') + '</span>' + (s.broi != null ? ' · ' + esc(s.broi) + ' записа' : '') + '</div>' +
         (s.belejka ? '<div class="small">' + esc(s.belejka) + '</div>' : '') + '</div></div>';
     }).join('') : '<p>Лаптопът още не е пратил данни за свежестта на източниците.</p>');
@@ -1980,6 +2871,8 @@
   var VID = { za_men: ['📌', 'За мен'], vazlozhi: ['👷', 'Възложи'], napomni: ['🔔', 'Напомни ми'], sreshta: ['📅', 'Среща'], iskane: ['❓', 'Поискай информация'] };
   var VID_SUB = { za_men: 'задача за теб — в To Do или в Интранета', vazlozhi: 'задача в Интранета за колега', napomni: 'в точен ден и час', sreshta: 'кога, къде, с кого', iskane: 'питаш някого за липсващото' };
   var VID_MN = { za_men: 'За мен', vazlozhi: 'Възложени', napomni: 'Напомняния', sreshta: 'Срещи', iskane: 'Искания' };
+  // знакът и името на задачата; питането по мейл („✉ Питай“) е „искане“ с danni.kanal = 'mail' [ETAP6 §3.6]
+  function vidIme(a) { return isPitai(a) ? ['✉', 'Питане по мейл'] : VID[a.vid] || null; }
   // честните редове „как“ — от една константа, за да се сменят на едно място след решението на РП (§17 В2–В4) [К35]
   var KAK_NAPOMNQNE = 'Засега няма звън — ще я видиш в Табло и в значката на Задачи, когато наближи. Как да звъни — ще решиш (Настройки → Как ми напомняш).';
   var KAK_SRESHTA = 'Какво става: засега само се записва в AiLab и се вижда в Задачи (филтър Срещи) и в Табло, когато наближи. Покана до хората и календар — ще решиш.';
@@ -2000,7 +2893,9 @@
   function renderPlusChooser() {
     if (!P) return;
     openSheet(P.zamenq ? 'Промени задачата' : 'Нова задача', (P.tid ? '<p class="sh-q">От точка: ' + esc(clip(P.tekst, 160)) + '</p>' : '') +
-      '<div class="choose">' + ['za_men', 'vazlozhi', 'napomni', 'sreshta', 'iskane'].map(function (k) {
+      // Етап 6 [§5.4]: „✉ Питай по мейл“ — първият избор, когато задачата е от точка (без нов бутон на картата)
+      '<div class="choose">' + (P.tid && P.tekst && !P.zamenq ? '<button type="button" class="ch4 v-pitai" data-a="pitai"><span class="ch4-e" aria-hidden="true">✉️</span><b>Питай по мейл</b>' +
+        '<span>мейл до избран човек: има ли отговор или развитие — AiLab следи отговора</span></button>' : '') + ['za_men', 'vazlozhi', 'napomni', 'sreshta', 'iskane'].map(function (k) {
         return '<button type="button" class="ch4 v-' + k + '" data-a="pick" data-v="' + k + '"><span class="ch4-e" aria-hidden="true">' + VID[k][0] + '</span><b>' + VID[k][1] + '</b><span>' + VID_SUB[k] + '</span></button>';
       }).join('') + '</div>' +
       '<p class="small muted">Задачите тръгват веднага — не чакат одобрението на деня.</p>', 'plus');
@@ -2401,31 +3296,40 @@
     if (ids.length) { var rc = ljget(K4.hora, []) || []; ids.forEach(function (id) { rc = [String(id)].concat(rc.filter(function (x) { return x !== String(id); })); }); ljset(K4.hora, rc.slice(0, 5)); }
     plusCommit(row, intr);
   }
-  // след „Запиши“: листът се затваря → 5 с „Отмени“ (на картата, ако е от точка; иначе тост) → запис. „Отмени“ връща формата [§8.2, К22]
+  // след „Запиши“: листът се затваря → записът е в опашката веднага (задържан), „Отмени“ ~5 с в лентата долу. „Отмени“ връща формата [§8.2, К22, ETAP6 §5.6]
   function plusCommit(row, intr) {
     var Ps = P, ctx = Ps.ctx, sec = Math.max(1, Math.round((activeMs() - Ps.t0) / 1000)), v = Ps.vid;
     var lbl = VID[v][0] + ' ' + (v === 'iskane' ? 'Искане' : VID[v][1]) + (intr ? ' · Интранет' : '');
     P = null; closeSheet();
     var redo = function () { P = Ps; P.t0 = activeMs(); renderPlusForm(); };
     var metr = function () { send('metriki', { vid: 'deistvie_sek', stoinost: sec, den_id: row.den_id }).catch(function () {}); };
+    var key = zadaStart(row, lbl, Ps.tid, ctx, redo, metr);
+    if (v === 'iskane') iskDone(row, Ps, key);
+  }
+  // Задача към точка (или без) — на картата в Табло (dc), в Преглед (pc) или само с лентата (z:…); общо за „+“, „→ Задача“ и „✉ Питай“
+  function zadaStart(row, lbl, tid, ctx, redo, metr) {
     var key;
     if (ctx && ctx.src === 'tablo' && ctx.close && ctx.tid) {
       var t = tFind(ctx.tid);
       if (t) { key = 'dc:' + t.id; dcStart(t, lbl, 'deistviq', row, redo, null, metr); }
     }
-    if (!key && Ps.tid && view === 'day' && findT(Ps.tid)) {
-      var tp = findT(Ps.tid), dn = S.den;
+    if (!key && tid && view === 'day' && findT(tid)) {
+      var tp = findT(tid), dn = S.den;
       key = 'pc:' + tp.id;
       undoStart({ key: key, kind: 'pc', tid: tp.id, lbl: lbl, tbl: 'deistviq', row: row, redo: redo,
-        pre: function () { metr(); if (tp.grupa === 'reshenie' && dn) noteClose(tp.id, dn.obekt || OBEKT_KOD, dn.data, false, null); } });
+        now: function () { if (tp.grupa === 'reshenie' && dn) noteClose(tp.id, dn.obekt || OBEKT_KOD, dn.data, false, null); },
+        back: function () { if (tp.grupa === 'reshenie') unClose(tp.id); },
+        pre: function () { if (metr) metr(); } });
     }
     if (!key) {
       key = 'z:' + newQid();
-      undoStart({ key: key, kind: 'toast', lbl: 'Записано · ' + lbl, tbl: 'deistviq', row: row, redo: redo,
-        pre: function () { metr(); if (ctx && ctx.src === 'tablo') tMeasure(); if (ctx && ctx.tid && ctx.close) noteClose(ctx.tid, ctx.o, ctx.d, false, null); },
+      undoStart({ key: key, kind: 'toast', lbl: lbl, tbl: 'deistviq', row: row, redo: redo,
+        now: function () { if (ctx && ctx.tid && ctx.close) noteClose(ctx.tid, ctx.o, ctx.d, false, null); },
+        back: function () { if (ctx && ctx.tid && ctx.close) unClose(ctx.tid); },
+        pre: function () { if (metr) metr(); if (ctx && ctx.src === 'tablo') tMeasure(); },
         done: function () { if (view === 'tablo') { renderOpen(true); refillOpen(); } } });
     }
-    if (v === 'iskane') iskDone(row, Ps, key);
+    return key;
   }
   // „Поискай информация“ стига до човека още днес: РП праща сам (правилото „ти одобряваш“) — без разрешения в Microsoft [И7]
   function iskDone(row, Ps, key) {
@@ -2448,28 +3352,13 @@
       '<button type="button" class="btn ghost" data-a="iskUndo">' + (u0 ? 'Отмени искането' : 'Отмени задачата') + '</button>' +
       '<button type="button" class="btn ghost" data-a="close">Готово</button>' +
       '<p class="small muted">Нищо не се праща от AiLab. Искането стои в Задачи (Искания).</p>', 'isk');
-    iskPause();
+    shuPause(key);
   }
   var ISK = null;
-  // Докато листът „❓ Искането е записано“ покрива картата, 5-те секунди „Отмени“ не текат; тръгват отначало, щом листът се затвори.
-  // Скриване на приложението (отваря се чатът) пак записва веднага (първо опашката [К22]) — тогава бутонът става „Отмени задачата“.
-  function undoBars(key) {
-    var l = Array.prototype.slice.call(document.querySelectorAll('[data-ub]')).filter(function (b) { return b.getAttribute('data-ub') === key; });
-    Array.prototype.forEach.call(document.querySelectorAll('.toast.undo'), function (t) { if (t.getAttribute('data-uk') === key) { var b = t.querySelector('.u-bar'); if (b) l.push(b); } });
-    return l;
-  }
-  function iskPause() {
-    var u = ISK && UNDO[ISK.key]; if (!u || u.paused) return;
-    clearTimeout(u.timer); u.timer = null; u.paused = true;
-    undoBars(u.key).forEach(function (b) { b.style.animationPlayState = 'paused'; });
-  }
-  function iskResume() {
-    var x = ISK; ISK = null;
-    var u = x && UNDO[x.key]; if (!u || !u.paused) return;
-    u.paused = false; u.t0 = Date.now();
-    u.timer = setTimeout(function () { undoCommit(u.key); }, UNDO_MS);
-    undoBars(u.key).forEach(function (b) { var n = b.cloneNode(false); n.style.animationPlayState = ''; n.style.animationDuration = UNDO_MS + 'ms'; b.parentNode.replaceChild(n, b); });
-  }
+  // Докато листът („❓ Искането е записано“, „✉ Питай“) покрива картата, 5-те секунди „Отмени“ не текат (pauza в опашката);
+  // тръгват отначало, щом листът се затвори. Скриване на приложението (отваря се чатът/пощата) пак записва веднага [К22, §5.6 т.10].
+  function shuPause(key) { if (!UNDO[key]) return; SHU = key; undoPause(key); }
+  function shuRelease() { var k = SHU; SHU = null; if (k) undoResume(k); }
   function iskUndo() {
     var x = ISK; if (!x) { closeSheet(); return; }
     if (UNDO[x.key]) { ISK = null; undoCancel(x.key); return; }   // още в 5-те секунди → нищо не е тръгнало
@@ -2497,13 +3386,22 @@
     chaka_reshenie: ['❔ начинът още не е избран', 'p-neutral'], chaka_razreshenie: ['🔒 чака разрешение в Microsoft', 'p-neutral'],
     vpisano: ['📤 вписано · Интранет №', 'p-ok'], izpalneno: ['✅ изпълнено', 'p-ok'], otmeneno: ['✕ отменено', 'p-neutral'], zameneno: ['✕ заменено', 'p-neutral'],
     greshka: ['⚠️ не стана: ', 'p-warn'], pend: ['⏳ на телефона — чака връзка', 'p-warn'], err: ['⚠️ не се записа — виж', 'p-warn'],
-    lokal: ['⏳ отбелязано — чака лаптопа', 'p-neutral'], prosr: ['просрочено', 'p-warn']
+    lokal: ['⏳ отбелязано — чака лаптопа', 'p-neutral'], prosr: ['просрочено', 'p-warn'],
+    chaka_otgovor: ['✉ чака отговор', 'p-neutral']   // Етап 6: питане по мейл [§2.3]
   };
   function isProba(a) { return a.status === 'zaqveno' && /^🧪/.test(a.belejka || ''); }
+  // „✉ Питай по мейл“ — задача „искане“ с danni.kanal = 'mail' [ETAP6 §3.6]
+  function isPitai(a) { return !!a && a.vid === 'iskane' && danniOf(a).kanal === 'mail'; }
   function stOf(a) {
     if (a._err) return ST.err;
     if (a._pend) return ST.pend;
     if (lokalClosed(a)) return ST.lokal;
+    // питане по мейл: „✉ чака отговор · от ДД.ММ“ (кехлибарено от 7 дни: „✉ чака отговор N дни“); отговорено → „✅ отговорено“ [§5.1]
+    if (isPitai(a) && (a.status === 'zaqveno' || a.status === 'chaka_otgovor')) {
+      var pt = danniOf(a).pitano || a.sazdadeno, pd = pt ? new Date(pt) : null, dn = pd && !isNaN(pd) ? daysAgo(ymd(pd)) : 0;
+      return dn >= 7 ? ['✉ чака отговор ' + dn + ' дни', 'p-warn'] : [ST.chaka_otgovor[0] + (pd && !isNaN(pd) ? ' · от ' + ddmm(pd) : ''), ST.chaka_otgovor[1]];
+    }
+    if (isPitai(a) && a.status === 'izpalneno') return ['✅ отговорено' + (a.obnoveno ? ' ' + dm(a.obnoveno) : ''), 'p-ok'];
     if (a.status === 'zaqveno') return isProba(a) ? ST.proba : ST.zaqveno;
     if (a.status === 'vpisano') return [ST.vpisano[0] + (a.vanshen_id || '?') + ' ›', ST.vpisano[1]];
     if (a.status === 'otmeneno') return /замен/i.test(a.belejka || '') ? ST.zameneno : ST.otmeneno;
@@ -2528,9 +3426,11 @@
   // Всички задачи: опашката на телефона + базата (7а/7б и заявка 4 на Таблото — по-прясната печели)
   function zadRows() {
     var out = [], seenK = {}, by = {};
+    // задържаният (5-те с „Отмени“) не е „на телефона — чака връзка“: показва се като направен [§5.6 т.3]
     queue().forEach(function (it) {
       if (it.tbl !== 'deistviq') return;
-      var r = Object.assign({ _q: true, _pend: !it.err, _err: it.err || '', _qid: it.qid, sazdadeno: it.at, id: 'q' + it.qid, status: 'zaqveno' }, it.row);
+      var h = isHeld(it);
+      var r = Object.assign({ _q: !h, _held: h, _pend: !it.err && !h, _err: it.err || '', _qid: it.qid, sazdadeno: it.at, id: 'q' + it.qid, status: 'zaqveno' }, it.row);
       out.push(r); if (r.klient_id) seenK[r.klient_id] = 1;
     });
     var tbNew = TB.okAt > S.actsOkAt;
@@ -2577,7 +3477,7 @@
   // „с“ / „със“: пред дума, която започва със „с“ или „з“ — „със“ (правописът)
   function sas(s) { return /^\s*[сзsz]/i.test(String(s || '')) ? 'със ' : 'с '; }
   function actRow(a) {
-    var v = VID[a.vid] || ['•', a.vid], s = stOf(a), o = objOf(a), g = zadGroup(a);
+    var v = vidIme(a) || ['•', a.vid], s = stOf(a), o = objOf(a), g = zadGroup(a);
     var over = g === 'soon' && a.srok && Date.parse(a.srok) < nowMs();
     var cel = a.cel === 'intranet' ? 'Интранет' : a.cel === 'todo' ? 'To Do' : '';
     var who = a.chovek ? (a.vid === 'iskane' ? 'до ' : a.vid === 'sreshta' ? sas(a.chovek) : '') + a.chovek : '';
@@ -2617,7 +3517,8 @@
     if (el._h !== h) { el.innerHTML = h; el._h = h; twSync(); }
   }
   // Записи, които базата отказа: текстът на РП стои тук, докато той не реши — „Опитай пак“ или „Махни“.
-  var QVID = { odobri: 'Одобрение на деня', potvardi: 'Потвърждение', popravka: 'Поправка', osporva: 'Оспорване', komentar: 'Коментар' };
+  var QVID = { odobri: 'Одобрение на деня', potvardi: 'Потвърждение', popravka: 'Поправка', osporva: 'Оспорване', komentar: 'Коментар',
+    izkljuchi: 'Не за дневника', vkljuchi: 'Пак в дневника', dobavi: 'Включване в дневника' };
   function openErrSheet() {
     var list = errQ();
     if (!list.length) { closeSheet(); return; }
@@ -2625,9 +3526,11 @@
       var kind = it.tbl === 'deistviq' ? 'Задача · ' + ((VID[it.row.vid] || ['', it.row.vid])[1])
         : it.tbl === 'deistviq_bel' ? 'Задача №' + it.row.deistvie_id + ' · ' + (it.row.vid === 'gotovo' ? 'Готово' : it.row.vid === 'otmeni' ? 'Отмени' : 'Лична бележка')
         : (QVID[it.row.vid] || it.row.vid);
+      // „➕ Включи в дневника“: часът и началото на съобщението вместо точката (tekst е само ключът) [ETAP6 §5.1]
+      var dob = it.tbl === 'resheniq' && it.row.vid === 'dobavi';
       return '<div class="qerr-i"><div><b>' + esc(kind) + '</b> <span class="small muted">· ' + esc(dm(it.at)) + '</span></div>' +
-        (it.tt ? '<div class="sh-q">Точка: ' + esc(clip(it.tt, 220)) + '</div>' : '') +
-        (it.row.tekst ? '<div class="qerr-t">' + esc(it.row.tekst) + '</div>' : '') +
+        (it.tt ? '<div class="sh-q">' + (dob ? 'Съобщение: ' : 'Точка: ') + esc(clip(it.tt, 220)) + '</div>' : '') +
+        (it.row.tekst && !dob ? '<div class="qerr-t">' + esc(it.row.tekst) + '</div>' : '') +
         '<div class="err">Защо: ' + esc(it.err) + '</div>' +
         '<div class="qerr-b"><button type="button" class="btn" data-a="qretry" data-q="' + esc(it.qid) + '">Опитай пак</button>' +
         '<button type="button" class="btn ghost" data-a="qdrop" data-q="' + esc(it.qid) + '">Махни от телефона</button></div></div>';
@@ -2649,7 +3552,8 @@
   // пада след всеки избран човек, а празното описание „краде“ фокуса при тап на избор (фокусът се връща от извикващия)
   function openSheet(title, body, kind, keepFocus) {
     var had = !!sheetEl;
-    if (had && sheetKind === 'isk') iskResume();   // „❓ Искането е записано“ се сменя с друг лист → 5-те секунди „Отмени“ текат пак
+    // листът над записа се сменя с друг → 5-те секунди „Отмени“ текат пак
+    if (had) { shuRelease(); if (sheetKind === 'isk') ISK = null; if (sheetKind === 'pitai' && kind !== 'pitai') PIT = null; if (sheetKind === 'izt' && kind !== 'izt') IZTS = null; }
     sheetKind = kind || '';
     if (sheetEl) { sheetEl.remove(); sheetEl = null; }
     if (!had) sheetPrev = document.activeElement;
@@ -2668,7 +3572,10 @@
   }
   function closeSheet() {
     if (!sheetEl) return;
-    if (sheetKind === 'isk') iskResume();
+    shuRelease();
+    if (sheetKind === 'isk') ISK = null;
+    if (sheetKind === 'pitai') PIT = null;
+    if (sheetKind === 'izt') IZTS = null;
     // източниците/снимките на панела „Избрана точка“ (широк екран) остават — махат се само тези на листа
     if (SP && SP.el === sheetEl) SP = null;
     if (SRC && SRC.el === sheetEl) SRC = null;
@@ -2683,7 +3590,7 @@
   // и dvh → листът с форма се събира точно във видимото над клавиатурата и залепеният „Запиши“ остава видим [К31, А12]
   function vvFit() {
     var sc = sheetEl, vv = window.visualViewport; if (!sc) return;
-    var sh = sc.firstChild, form = sheetKind === 'form' || sheetKind === 'py' || sheetKind === 'bel';
+    var sh = sc.firstChild, form = sheetKind === 'form' || sheetKind === 'py' || sheetKind === 'bel' || sheetKind === 'pitai';
     var on = !!(vv && form && (window.innerHeight - vv.height > 80 || vv.offsetTop > 0));
     sc.style.top = on ? Math.round(vv.offsetTop) + 'px' : '';
     sc.style.bottom = on ? 'auto' : '';
@@ -3432,7 +4339,7 @@
     window.scrollTo(0, TB.scrollY || 0);
     if (anyDefer() && scrolledFar()) showPill(); else if (anyDefer()) applyDeferred();
     if (stale60(TB.okAt)) loadTablo();
-    else if (!selState(TB.sel).open) loadSel(TB.sel);
+    else { if (!selState(TB.sel).open) loadSel(TB.sel); dnesLoad(); }
     prisLoad();   // Присъствия — при отваряне на Таблото (≤ 1 на 10 мин) [К21]
   }
   // Табът „Преглед“: последният показан обект; ако денят вече е зареден — без пълно презареждане.
@@ -3627,6 +4534,7 @@
         else { renderChart(true); feedReset(sel); }
       }
       prisMaybe();   // Присъствия — при смяна на svezhest.prisystvia.posledno (≤ 1 на 10 мин) [К21]
+      if (view === 'tablo') dnesLoad();   // Етап 6 [§5.14]: „📥 Днес досега“ — една малка заявка на обект (≤ 1 на минута)
       if (view === 'tablo') renderTabloLive();
       renderTabs(); renderBanners(); stampNow();
     }, function (e) { if (tok === TB.tok) baseFail(e); });
@@ -3655,6 +4563,7 @@
       if (sel === TB.sel && view === 'tablo') { renderOpen(!!force); renderTabloCounts(); }
       renderTabs();
       phOpenLoad(sel, st.open);
+      tZapLoad(st.open);   // Етап 6: кои ⟦k⟧ имат свой ред — за 🚫 в картите [§5.5]
     }, function (e) {
       if (seq !== st.oseq) return;
       if (st.open && st.open.loadingAll) { st.open.loadingAll = false; st.open.all = false; }
@@ -3826,7 +4735,7 @@
   function buildTablo() {
     // .tb2 / .tb2-l / .tb2-r — само за широкия екран (2 колони); на телефона са display:contents → подредбата е както досега
     tablo.innerHTML = scrHead('tablo') +
-      '<div id="tb-sw"></div><div id="tb-top" class="tb-top"></div><div id="tb-fresh"></div><div id="tb-cnt" class="stats tb-cnt"></div>' +
+      '<div id="tb-sw"></div><div id="tb-top" class="tb-top"></div><div id="tb-fresh"></div><div id="tb-cnt" class="stats tb-cnt"></div><div id="tb-dnes" class="tb-dnes"></div>' +
       '<div class="tb2"><div class="tb2-l">' +
       '<section class="grp g-reshenie" id="tb-open-s" aria-label="Изисква решение"><div class="grp-h"><h2>Изисква решение</h2><span class="grp-n" id="tb-open-n">…</span><span class="grp-rc" id="tb-red-resh"></span></div>' +
         '<p class="grp-s">чака теб: отговор, решение, пари или срок</p><div id="tb-open" class="tb-list"></div></section>' +
@@ -3850,7 +4759,7 @@
     if (!TB.built) buildTablo();
     if (!keep) { TB.defer = {}; hidePill(); }
     var d = TB.defer;
-    renderTbSw(); renderTbTop(); renderFresh('#tb-fresh', true); renderTabloCounts(); renderTbRed();
+    renderTbSw(); renderTbTop(); renderFresh('#tb-fresh', true); renderTabloCounts(); renderDnes(); renderTbRed();
     if (!d.open) renderOpen(true);
     if (!d.chart) renderChart(true);
     if (!d.feed) renderFeed(); else renderFeedEnd();
@@ -3858,7 +4767,7 @@
   // Смяна от опашката/мрежата: числата винаги; списъкът с решенията — само ако не си скролнал надолу [К11].
   function renderTabloLive() {
     if (view !== 'tablo' || !TB.built) return;
-    renderTbSw(); renderTbTop(); renderFresh('#tb-fresh', true); renderTabloCounts(); renderOpen(false); renderFeedEnd();
+    renderTbSw(); renderTbTop(); renderFresh('#tb-fresh', true); renderTabloCounts(); renderDnes(); renderOpen(false); renderFeedEnd();
   }
   function renderTbSw() {
     var el = box('#tb-sw'); if (!el) return;
@@ -3887,7 +4796,7 @@
       }
     }
     el.innerHTML = h;
-    ['#tb-fresh', '#tb-cnt', '#tb-open-s', '#tb-hora-s', '#tb-feed-s'].forEach(function (s) { var n = $(s); if (n && n.hidden === show) n.hidden = !show; });
+    ['#tb-fresh', '#tb-cnt', '#tb-dnes', '#tb-open-s', '#tb-hora-s', '#tb-feed-s'].forEach(function (s) { var n = $(s); if (n && n.hidden === show) n.hidden = !show; });
   }
   function renderTabloCounts() {
     var el = box('#tb-cnt'); if (!el) return;
@@ -3955,28 +4864,76 @@
     if (n.textContent !== v) n.textContent = v;
   }
   function dcCard(t, hi, ph) {
-    var d = t.dni || {}, tid = esc(t.id);
-    // 5 с „Отмени“ [К21, правило 8]: картата стои на мястото си (приглушена), сменя се само редът с бутоните —
-    // височината не се мени, „Отмени“ излиза точно под палеца, нищо под него не подскача [К11]
-    var u = UNDO['dc:' + t.id], und = !!u, pl0 = ph && ph[t.id];
+    var d = t.dni || {}, tid = esc(t.id), pl0 = ph && ph[t.id];
     var hot = (t.vajnost || 1) >= 3, w = waitPill(d.data), izv = t.izvori || [];
-    return '<article class="dc' + (hot ? ' hot' : '') + (und ? ' undoing' : '') + '" data-tid="' + tid + '">' +
-      '<button type="button" class="dc-open" data-a="tOpen" data-o="' + esc(d.obekt) + '" data-den="' + esc(t.den_id) + '" data-tid="' + tid + '"' + (und ? ' tabindex="-1" aria-hidden="true"' : '') + '>' +
+    // Етап 6 [§5.5]: 🚫 Не включвай — на чернова, ако k има свой ред в записа на деня (tZap); ред 2 на цял ред, както в Преглед
+    var dn = dcMozhe(t), vd = dn ? dcVd(t) : true, mc = kanali(izv).length >= 2;
+    return '<article class="dc' + (hot ? ' hot' : '') + (dn && !vd ? ' izk' : '') + (mc ? ' mk' : '') + '" data-tid="' + tid + '">' +
+      '<button type="button" class="dc-open" data-a="tOpen" data-o="' + esc(d.obekt) + '" data-den="' + esc(t.den_id) + '" data-tid="' + tid + '">' +
         '<span class="dc-m"><span class="ochip o-' + esc(d.obekt) + '">' + esc(SELK[d.obekt] || d.obekt) + '</span><span class="dc-d">' + esc(lcDay(d.data)) + '</span>' +
-          '<span class="pill ' + w[1] + '">' + w[0] + '</span>' + (isNewDay(d) ? '<span class="pill p-new">🆕</span>' : '') + (hot ? '<span class="pill p-bad">⚠️ важно</span>' : '') + '</span>' +
+          '<span class="pill ' + w[1] + '">' + w[0] + '</span>' + (isNewDay(d) ? '<span class="pill p-new">🆕</span>' : '') + (hot ? '<span class="pill p-bad">⚠️ важно</span>' : '') +
+          (dn && !vd ? '<span class="pill p-izk">🚫 няма да влезе в дневника</span>' : '') + '</span>' +
         '<span class="dc-b"><span class="dc-e" aria-hidden="true">' + emoT(t) + '</span><span class="dc-t">' + esc(t.tekst) + '</span></span>' +
         '<span class="sr"> — отвори деня</span></button>' +
-      (izv.length && !und ? '<button type="button" class="srcb dc-src" data-a="tSrc" data-tid="' + tid + '" aria-label="Източници: ' + izv.length + '"><span class="ref">' + izv.length + '</span><span class="srcb-l">›</span></button>' : '') +
+      (izv.length ? srcBtn(izv, t.id, 'tSrc', 'dc') : '') +
       // снимките на картата (С5) — до 4 + „+N“; тап → прегледът само на тях [§6.2]
-      (pl0 && pl0.length && !und ? phRowHtml(pl0, 'dcPh', 'data-tid="' + tid + '"', pl0.n) : '') +
+      (pl0 && pl0.length ? phRowHtml(pl0, 'dcPh', 'data-tid="' + tid + '"', pl0.n) : '') +
       (hi.err[t.id] ? '<div class="dc-w"><button type="button" class="dc-errb" data-a="qerr">⚠️ не се записа — виж</button></div>' : '') +
-      (und
-        ? '<div class="dc-a dc-ua"><span class="dc-u">' + esc(u.lbl) + '</span>' +
-          '<button type="button" class="pa dc-ub" data-a="undo" data-k="dc:' + tid + '">Отмени</button><i class="u-bar" data-ub="dc:' + tid + '" aria-hidden="true"></i></div>'
-        // същите три бутона като в Преглед — полето за разяснение е там, където РП решава [К27]
-        : '<div class="dc-a three"><button type="button" class="pa pa-ok" data-a="tOk" data-tid="' + tid + '">✓ Отговорено</button>' +
-          '<button type="button" class="pa" data-a="tFix" data-tid="' + tid + '">✎ Поясни</button>' +
-          '<button type="button" class="pa" data-a="tAct" data-tid="' + tid + '">→ Задача</button></div>') + '</article>';
+      // същите бутони като в Преглед — полето за разяснение е там, където РП решава [К27]; „Отмени“ — в лентата долу [§5.6]
+      '<div class="dc-a three"><button type="button" class="pa pa-ok" data-a="tOk" data-tid="' + tid + '">✓ Отговорено</button>' +
+        '<button type="button" class="pa" data-a="tFix" data-tid="' + tid + '">✎ Поясни</button>' +
+        '<button type="button" class="pa" data-a="tAct" data-tid="' + tid + '">→ Задача</button>' +
+        (dn ? '<button type="button" class="pa pa-dn' + (vd ? '' : ' off') + '" data-a="tDn" data-tid="' + tid + '" aria-pressed="' + !vd + '" aria-label="' + (vd ? 'Не включвай в дневника' : 'Върни в дневника') + '">' + (vd ? '🚫 Не включвай в дневника' : '📘 Върни в дневника') + '</button>' : '') +
+      '</div></article>';
+  }
+  // ---- Етап 6 [§5.5]: „🚫 Не включвай“ в Табло ----
+  // кои ⟦k⟧ имат свой ред в записа на видимите дни-чернови (tZap, ≤ 10 дни, веднъж) — само в паметта: TB.zap[den] = {k: true}
+  function dcMozhe(t) { var d = t.dni, z = TB.zap[tZapK(t)]; return !!(t.k != null && d && d.status === 'chernova' && z && z[t.k]); }
+  // „в дневника ли е“: последният избор в опашката (и задържаният), иначе Преглед за същия ден, иначе tochki.v_dnevnika
+  function dcVd(t) {
+    var v = null;
+    queue().forEach(function (it) { if (it.tbl === 'resheniq' && !it.err && it.row.tochka_id === t.id && (it.row.vid === 'izkljuchi' || it.row.vid === 'vkljuchi')) v = it.row.vid === 'vkljuchi'; });
+    if (v !== null) return v;
+    if (S.den && S.den.id === t.den_id) { var p = findT(t.id); if (p) return vDn(p); }
+    return t.v_dnevnika !== false;
+  }
+  // ключът е денят + версията: нова версия на черновата → записът се тегли наново (≤ 10 дни на заявка)
+  function tZapK(t) { return t.den_id + ':' + (t.dni ? t.dni.versiq : ''); }
+  function tZapLoad(o) {
+    if (!o || !o.items || offNow() || !E6.open) return;
+    var ids = [], ver = {};
+    (o.all ? o.items : o.items.slice(0, 5)).forEach(function (t) {
+      var zk = tZapK(t);
+      if (t.k != null && t.dni && t.dni.status === 'chernova' && !TB.zap[zk] && !TB.zapAsk[zk] && ids.indexOf(t.den_id) < 0) { ids.push(t.den_id); ver[t.den_id] = zk; }
+    });
+    ids = ids.slice(0, 10);
+    if (!ids.length) return;
+    ids.forEach(function (id) { TB.zapAsk[ver[id]] = 1; });
+    api.tZap(ids).then(function (rows) {
+      (rows || []).forEach(function (r) {
+        var ks = {};
+        String(r.zapis_md || '').split('\n').forEach(function (l) { mdKs(l).forEach(function (k) { ks[k] = true; }); });
+        if (ver[r.id]) TB.zap[ver[r.id]] = ks;
+      });
+      ids.forEach(function (id) { if (!TB.zap[ver[id]]) TB.zap[ver[id]] = {}; });
+      if (view === 'tablo') renderOpen(false, true);
+    }, function () { ids.forEach(function (id) { delete TB.zapAsk[ver[id]]; }); });
+  }
+  // новото v_dnevnika (след като записът е в базата) — във всички копия на точката в Таблото и в Преглед
+  function tSetVd(tid, v) {
+    ['ag', 'soft', 'all'].forEach(function (s) {
+      var st = TB.S[s]; if (!st) return;
+      [st.open && st.open.items, st.old && st.old.items].forEach(function (l) { (l || []).forEach(function (t) { if (t.id === tid) t.v_dnevnika = v; }); });
+    });
+  }
+  function tDn(tid) {
+    var t = tFind(tid); if (!t || !t.dni || !dcMozhe(t)) return;
+    var d = t.dni, vk = !dcVd(t);   // сега е изключена → връщам я
+    var row = { den_id: t.den_id, tochka_id: t.id, vid: vk ? 'vkljuchi' : 'izkljuchi', versiq: d.versiq, hesh: d.hesh || null, ustroistvo: device() + ' · табло' };
+    tMeasure();
+    // картата НЕ се затваря — решението остава отворено, както в Преглед; без тоста dnShared (той е само в Преглед)
+    undoStart({ key: 'dn:' + tid, kind: 'dn', tid: tid, lbl: vk ? '📘 Пак в дневника' : '🚫 Не за дневника', tbl: 'resheniq', row: row, meta: { tt: t.tekst },
+      done: function (r) { if (r === 'sent') tSetVd(tid, vk); if (view === 'tablo') renderOpen(true); } });
   }
   function openHtml() {
     var sel = TB.sel, st = selState(sel), o = st.open, hi = hideInfo(), h = '';
@@ -4012,11 +4969,6 @@
     if (!force && !WIDE && el.node._h != null && el.node._h !== h && scrolledFar()) { TB.defer.open = true; if (!quiet) showPill(); renderOpenN(); return; }
     TB.defer.open = false;
     el.innerHTML = h;
-    // лентата на „Отмени“ тече от натискането, не от последното пречертаване
-    Array.prototype.forEach.call(el.node.querySelectorAll('[data-ub]'), function (b) {
-      var u = UNDO[b.getAttribute('data-ub')];
-      if (u) b.style.animationDuration = Math.max(0, UNDO_MS - (Date.now() - u.t0)) + 'ms';
-    });
     // появяване само на нови карти — пречертаването след ✓ / „Отмени“ / дотегляне не мига по всички карти
     Array.prototype.forEach.call(el.node.querySelectorAll('.dc[data-tid]'), function (a) {
       var k = a.getAttribute('data-tid');
@@ -4032,10 +4984,9 @@
         '<div class="fd-s">' + esc(lcDay(r.data)) + ' · ' + esc(st) + '</div></div></div>' +
       '<p class="fd-x">' + esc(t.tekst) + '</p>' +
       (ist || hot ? '<div class="fd-p">' + (ist ? '<span class="pill ' + ist[1] + '">' + ist[0] + '</span>' : '') + (hot ? '<span class="pill p-bad">⚠️ важно</span>' : '') + '</div>' : '') +
-      '<div class="fd-a">' +
-        (izv.length ? '<button type="button" class="srcb" data-a="tSrc" data-tid="' + esc(t.id) + '" aria-label="Източници: ' + izv.length + '">' +
-          izv.map(function (s) { return '<span class="ref">' + esc(s.n) + '</span>'; }).join('') + '<span class="srcb-l">' + (izv.length === 1 ? 'източник' : 'източника') + ' ›</span></button>'
-          : '<span class="fd-ns">няма източник</span>') +
+      // Етап 6 [§5.5]: ред 1 — бутонът на източниците (цял ред); ред 2 — „→ Задача“ · „Денят ›“
+      '<div class="fd-a">' + (izv.length ? srcBtn(izv, t.id, 'tSrc', 'fd') : '<span class="fd-ns">няма източник</span>') + '</div>' +
+      '<div class="fd-a two">' +
         '<button type="button" class="pa" data-a="tAct" data-tid="' + esc(t.id) + '">→ Задача</button>' +
         '<button type="button" class="pa" data-a="tOpen" data-o="' + esc(r.obekt) + '" data-den="' + esc(r.id) + '" data-tid="' + esc(t.id) + '">Денят ›</button></div></article>';
   }
@@ -4608,26 +5559,25 @@
   }
   // Карта в „Изисква решение“: ✓ Отговорено / ✎ Поясни / → Задача — 5 с „Отмени“ преди записа (INSERT-ът е необратим) [К21, К27]
   // extraPre — напр. мерането на задачата (записва се чак ако не е отменено)
+  // Етап 6 [§5.6]: картата излиза ВЕДНАГА (записът е задържан в опашката → hideInfo я скрива); „Отмени“ я връща
   function dcStart(t, lbl, tbl, row, redo, meta, extraPre) {
     var d = t.dni || tDay(t) || {}, tid = t.id;
     tMeasure();
     undoStart({ key: 'dc:' + tid, kind: 'dc', tid: tid, lbl: lbl, tbl: tbl, row: row, meta: meta || { tt: t.tekst }, redo: redo,
-      pre: function () {
-        if (extraPre) extraPre();
-        TB.closed[tid] = { at: nowIso(), o: d.obekt || null, d: d.data || null, ok: row.vid === 'potvardi' ? 1 : 0, sent: null };
-        TB.inflight[tid] = 1; saveTablo();
-      },
+      now: function () { TB.closed[tid] = { at: nowIso(), o: d.obekt || null, d: d.data || null, ok: row.vid === 'potvardi' ? 1 : 0, sent: null }; saveTablo(); },
+      back: function () { unClose(tid); },
+      pre: function () { if (extraPre) extraPre(); TB.inflight[tid] = 1; },
       done: function (r) { delete TB.inflight[tid]; saveTablo(); renderCurrent(); if (r === 'sent') refillOpen(); },
       fail: function () { delete TB.inflight[tid]; saveTablo(); if (view === 'tablo') renderOpen(true); } });
   }
   function tOk(tid) {
-    var t = tFind(tid); if (!t || !t.dni || UNDO['dc:' + tid]) return;
+    var t = tFind(tid); if (!t || !t.dni) return;
     var d = t.dni;
     dcStart(t, '✓ Отговорено', 'resheniq', { den_id: t.den_id, tochka_id: t.id, vid: 'potvardi', tekst: 'отговорено', versiq: d.versiq, hesh: d.hesh || null, ustroistvo: device() + ' · табло' });
   }
   // „✎ Поясни“ от Таблото — същият лист; денят е известен от t.dni [К27]
   function tFix(tid) {
-    var t = tFind(tid); if (!t || UNDO['dc:' + tid]) return;
+    var t = tFind(tid); if (!t) return;
     var d = t.dni || tDay(t) || {};
     openPoyasni(t, { id: t.den_id, obekt: d.obekt, data: d.data, versiq: d.versiq, hesh: d.hesh, status: d.status }, 'dc');
   }
@@ -4673,8 +5623,7 @@
   function tAct(tid) {
     var t = tFind(tid); if (!t) return;
     var d = tDay(t);
-    if (UNDO['dc:' + tid]) return;
-    openPlus(null, { src: 'tablo', tid: t.id, den_id: t.den_id, tekst: t.tekst, o: d.obekt || null, d: d.data || null, close: !!t.dni, izvori: t.izvori || [] });
+    openPlus(null, { src: 'tablo', tid: t.id, den_id: t.den_id, tekst: t.tekst, o: d.obekt || null, d: d.data || null, close: !!t.dni, izvori: t.izvori || [], k: t.k });
   }
   function tOpenDay(el) {
     var o = el.getAttribute('data-o'), id = +el.getAttribute('data-den') || null, tid = +el.getAttribute('data-tid') || null;
@@ -4863,6 +5812,17 @@
     if (view === 'deistviq') renderActsTab();
     if (sheetKind === 'zad' && ZS) openZad(ZS.id, true);
     if (sheetKind === 'izad' && IZT.sel != null) openIzad(IZT.sel, true);
+    // Етап 6: пил „🗂️ #7888“ / „Задачата ›“ натиснат, докато списъкът още се зарежда → листът се отваря сега
+    if (IZT.after != null) { var ta = IZT.after; IZT.after = null; if (IZT.rows) openIzad(ta); }
+    if (view === 'day' && S.den) { keepAnchor(function () { renderGroups(); }); renderIzt(); }   // пиловете „🗂️ #…“ по текста — след списъка
+    if (sheetKind === 'izt') iztSheetPaint();   // „📥 Днес досега“ — „създадена ЧЧ:ММ“ в блока Интранет, щом списъкът дойде
+  }
+  // Етап 6 [§5.3 б]: листът на задача от Интранета и от Преглед/Табло — списъкът (Етап 5) се зарежда при нужда, кешът му важи
+  function izadGo(tid) {
+    izInit();
+    if (izFind(tid) || IZT.st === 'missing' || offNow()) { openIzad(tid); return; }
+    if (IZT.busy || !IZT.rows) { IZT.after = tid; izLoad(!IZT.busy); toast('Зареждам задачите от Интранета…'); return; }
+    openIzad(tid);
   }
   function zadIzg() { return IZT.st !== 'missing' && lget(K5.izg) === 'intranet' ? 'intranet' : 'ailab'; }
   function izObOk(r, o) { return o === 'all' ? true : o === 'drugi' ? !(r.obekt === 'ag' || r.obekt === 'soft') : r.obekt === o; }
@@ -4920,14 +5880,15 @@
     var m = Math.round((nowMs() - t) / 60000);
     return m < 1 ? 'току-що' : m < 60 ? 'преди ' + m + ' мин' : m < 1440 ? 'преди ' + Math.round(m / 60) + ' ч' : rel(new Date(t).toISOString());
   }
-  // свежестта: кехлибарено само при грешка или > 3 ч в 07:00–21:00 — нощем няма пускове по замисъл [К29]
+  // свежестта — по графика (svOld, ETAP6 §3.5); лаптопът спи → сивият ред + кехлибарено само ако е застарял преди заспиването;
+  // „входът не мина“ остава винаги (иска действие от РП) [§5.7]
   function izFresh() {
     var s = svOf('intranet');
     if (!s) return '<p class="iz-fr">Интранет: лаптопът още не е пратил данни.</p>';
-    var t = Date.parse(s.posledno), h = now().getHours(), vhod = s.ok === false && /вход/i.test(s.belejka || '');
-    var amb = s.ok === false || ((isNaN(t) || nowMs() - t > 3 * 36e5) && h >= 7 && h < 21);
+    var t = Date.parse(s.posledno), sp = svSpi(), vhod = s.ok === false && /вход/i.test(s.belejka || '');
+    var amb = svWarn(s, sp);
     var txt = vhod ? 'Интранет: входът не мина — влез отново в Интранета от лаптопа' : 'Интранет: обновено ' + agoTxt(t) + (s.ok === false ? ' · ⚠️ грешка при събиране' : '');
-    return '<p class="iz-fr' + (amb ? ' warn' : '') + '">' + esc(txt) + '</p>';
+    return (sp.spi ? '<p class="iz-fr sleep">' + esc(spiTxt(sp)) + '</p>' : '') + '<p class="iz-fr' + (amb ? ' warn' : '') + '">' + esc(txt) + '</p>';
   }
   function izHtml() {
     izInit();
@@ -5019,9 +5980,54 @@
   // ---------- листът на една задача [§8.4] ----------
   var ZS = null;   // {id, confirm}
   function okZadUrl(u) { return /^https:\/\//.test(String(u || '')) || (DEMO && /^#demo-/.test(String(u || ''))); }
+  // Етап 5.2: на лаптопа връзката към Интранета отива в ЕДИН отделен прозорец (data-a="izWin"; „izOpen“ е друго) [ETAP6 §5.10]
   function zadLink(u, lbl, cls) {
-    if (DEMO && /^#demo-/.test(String(u))) return '<button type="button" class="' + cls + '" data-a="demoLink" data-k="intranet">' + lbl + '</button>';
-    return '<a class="' + cls + '" href="' + esc(u) + '" target="_blank" rel="noopener">' + lbl + '</a>';
+    if (DEMO && /^#demo-/.test(String(u))) return '<button type="button" class="' + cls + '" data-a="demoLink" data-k="intranet" data-u="' + esc(u) + '">' + lbl + '</button>';
+    return '<a class="' + cls + '" href="' + esc(u) + '" target="_blank" rel="noopener" data-a="izWin">' + lbl + '</a>';
+  }
+  // лаптоп = не телефон/таблет (и iPad, който се представя като Mac) и с мишка [ETAP6 §5.10]
+  function naLaptopa() {
+    var ua = navigator.userAgent || '';
+    return !/iPhone|iPad|iPod|Android/i.test(ua) && !(navigator.maxTouchPoints > 1 && /Macintosh/.test(ua)) &&
+      !!(window.matchMedia && window.matchMedia('(pointer: fine)').matches);
+  }
+  // Препратка към прозореца: втората задача отива в същия и излиза отпред; затворен ръчно → следващият клик отваря нов.
+  // opener НЕ се маха (за разлика от §5.10): без него Chrome забранява смяната на адреса (и затварянето), щом прозорецът
+  // вече е на Интранета — „SecurityError … does not have permission to navigate the target frame“ (проба в Chrome, 08.10).
+  // Адресът е само https от link на Интранета [Е5 §3.3]. Не се разчита на търсене по име [ETAP6 §5.10]
+  var IZW = null;
+  function izWinDemo(w, tid) {   // демо: прозорецът остава about:blank, само текст (през textContent)
+    try {
+      w.document.title = 'Интранет (демо)';
+      var b = w.document.body || w.document.documentElement.appendChild(w.document.createElement('body'));
+      b.style.cssText = 'font:18px/1.5 system-ui,sans-serif;margin:0;padding:48px 32px;color:#1f2937;background:#fff';
+      b.textContent = 'Демо: тук ще се отвори задача №' + (tid || '—') + ' от Интранета.';
+    } catch (e) {}
+  }
+  function izWinGo(w, u, demoTid) {   // адресът (или демо текстът) в прозореца + отпред; false = Chrome не позволи
+    if (demoTid !== undefined) izWinDemo(w, demoTid);
+    else { try { w.location.href = u; } catch (e) { return false; } }
+    try { w.focus(); } catch (e) {}
+    return true;
+  }
+  function openIzWin(u, demoTid) {
+    var demo = demoTid !== undefined;
+    if (IZW && !IZW.closed && izWinGo(IZW, u, demoTid)) return;
+    var sc = window.screen || {}, aw = sc.availWidth || 1280, ah = sc.availHeight || 800;
+    var W = Math.round(aw * 0.9), H = Math.round(ah * 0.9);
+    var L = (sc.availLeft || 0) + Math.round((aw - W) / 2), T = (sc.availTop || 0) + Math.round((ah - H) / 2);
+    var w = null;
+    try { w = window.open('', 'ailab-intranet', 'popup,width=' + W + ',height=' + H + ',left=' + L + ',top=' + T); } catch (e) { w = null; }
+    if (!w) {   // Chrome спря прозореца → обичайният нов раздел
+      IZW = null;
+      if (demo) { toast('В демото няма истински Интранет'); return; }
+      window.open(u, '_blank', 'noopener');
+      toast('Chrome спря прозореца — отворих в нов раздел.');
+      return;
+    }
+    IZW = w;
+    try { w.moveTo(L, T); w.resizeTo(W, H); } catch (e) {}
+    if (!izWinGo(w, u, demoTid)) { IZW = null; window.open(u, '_blank', 'noopener'); }
   }
   function danniOf(a) { var d = a.danni; if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) { d = null; } } return d && typeof d === 'object' ? d : {}; }
   function zadFields(a) {
@@ -5043,6 +6049,13 @@
       if (a.mqsto) out.push(['Къде', a.mqsto]);
       if (a.srok) out.push(['Кога', cap(exact(new Date(a.srok)))]);
       if (d.prodalzhitelnost_min) out.push(['Колко', (+d.prodalzhitelnost_min % 60 ? (+d.prodalzhitelnost_min / 60).toFixed(1).replace('.', ',') : +d.prodalzhitelnost_min / 60) + ' ч']);
+    } else if (a.vid === 'iskane' && d.kanal === 'mail') {
+      // „✉ Питай по мейл“ — ключът е adresati (не do) [ETAP6 §3.6]
+      var ad = Array.isArray(d.adresati) ? d.adresati : [];
+      out.push(['Кому', ad.length ? ad.map(function (x) { return x && x.ime ? x.ime + ' · ' + x.adres : (x && x.adres) || ''; }).join(', ') : (a.chovek || '—')]);
+      if (d.tema) out.push(['Тема', d.tema]);
+      if (d.pitano) out.push(['Питано', cap(exact(new Date(d.pitano)))]);
+      out.push(['Как', 'мейл от Outlook; сутрешният пуск отбелязва отговора']);
     } else if (a.vid === 'iskane') {
       if (a.chovek) out.push(['До кого', a.chovek]);
       if (d.nishka) out.push(['Къде', d.nishka]);
@@ -5092,8 +6105,8 @@
     if (isProba(a)) h += '<div class="zd-proba"><b>🧪 Готова — така ще я впиша:</b><div>' + esc(String(a.belejka).replace(/^🧪\s*/, '')) + '</div><div class="small muted">В Интранета нищо не е изпратено — вписването започва след твоето „да“ в чата с Claude.</div></div>';
     h += '<div class="zd-ch"><div class="zd-chh">Докъде стигна</div><ol class="zd-chain">' + zadChain(a).map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ol></div>';
     var b = '', pendU = num && Object.keys(UNDO).some(function (k) { return k.indexOf('b:' + a.id + ':') === 0; });
-    if (pendU) {
-      b += '<p class="small muted">⏳ Записва се — „Отмени“ е в тоста долу.</p>';
+    if (pendU || a._held) {
+      b += '<p class="small muted">⏳ Записва се — „Отмени“ е в лентата долу.</p>';
     } else if (a._q) {
       // ред, който още не е стигнал до облака: не е пратен → нищо не се отменя в базата [К20]
       b += (a._err ? '<p class="err">Базата отказа записа: ' + esc(a._err) + '</p><button type="button" class="btn" data-a="qretry" data-q="' + esc(a._qid) + '">Опитай пак</button>'
@@ -5105,7 +6118,8 @@
       b += '<p class="warnline">Да я отменя ли? Лаптопът я затваря в AiLab' + (a.status === 'vpisano' ? ' — вписаната в Интранета отменяш там.' : '.') + '</p>' +
         '<button type="button" class="btn big" data-a="zOtmeniDa">Да, отмени задачата</button><button type="button" class="btn ghost" data-a="zOtmeniNe">Не</button>';
     } else {
-      var open = OTV.indexOf(a.status) >= 0 || a.status === 'greshka', canEdit = ['zaqveno', 'dopalni', 'chaka_reshenie', 'chaka_razreshenie', 'greshka'].indexOf(a.status) >= 0;
+      // питането по мейл се отменя и в „✉ чака отговор“ (лаптопът обработва отметките и там) [§3.6]; „Промени“ → листът „✉ Питай“
+      var open = OTV.indexOf(a.status) >= 0 || a.status === 'greshka', canEdit = ['zaqveno', 'dopalni', 'chaka_reshenie', 'chaka_razreshenie', 'greshka'].indexOf(a.status) >= 0 || (isPitai(a) && a.status === 'chaka_otgovor');
       if (open && !lc) {
         if (a.status === 'dopalni') b += '<button type="button" class="btn big" data-a="zEdit">✎ Допълни</button>';
         b += '<button type="button" class="btn ' + (a.status === 'dopalni' ? 'ghost' : 'big') + '" data-a="zGotovo">Готово ✓</button>';
@@ -5120,7 +6134,7 @@
       if (a.tochka_id != null && a.den_id != null && objOf(a)) b += '<button type="button" class="btn ghost" data-a="zTochka">Към точката ›</button>';
     }
     h += '<div class="zd-b">' + b + '</div>';
-    var ttl = v[0] + ' ' + (v[1] === 'Поискай информация' ? 'Искане за информация' : v[1]) + (num ? ' · №' + a.id : '');
+    var ttl = (isPitai(a) ? '✉ Питане по мейл' : v[0] + ' ' + (v[1] === 'Поискай информация' ? 'Искане за информация' : v[1])) + (num ? ' · №' + a.id : '');
     if (pan) { S.zadSel = String(a.id); ZS.h = h; putH($('#zadPan'), '<div class="zpan-h">' + esc(ttl) + '</div>' + h); zadMarkSel(); return; }   // широк екран — панелът
     if (live && sheetKind === 'zad' && ZS0h === h) { ZS.h = h; return; }   // пречертаване само при промяна (скролът в листа остава)
     ZS.h = h;
@@ -5145,6 +6159,7 @@
   // „Промени“ / „Допълни“: формата, попълнена от реда → „Запиши“ = нов ред със zamenq (телефонът не променя редове) [§8.4]
   function zadEdit(a) {
     ZS = null; closeSheet();
+    if (isPitai(a)) { openPitaiZad(a); return; }   // питане по мейл → листът „✉ Питай“ с данните ѝ, не формата „Искане“ [§5.4]
     var o = objOf(a), d = danniOf(a), v = a.vid;
     P = { tid: a.tochka_id || null, tekst: a.tekst || '', t0: activeMs(), vid: null, ctx: { src: 'zad' }, o: o, oFix: !!o, den_id: a.den_id != null ? a.den_id : null,
       izvori: null, fs: {}, f: null, zamenq: a.id, avtori: [] };
@@ -5212,11 +6227,12 @@
       '<li>Само в сводката 07:30 / 16:30</li>' +
       '<li>Файл за календара на телефона <span class="muted">(.ics с аларма — без разрешение; ако пробата на iPhone мине)</span></li></ol>' +
       '<p class="small muted">Докато решиш: напомнянето се вижда в Табло и в значката на Задачи, без звън.</p>');
+    h += nsCard('Как се прави дневникът', 'Какво влиза в Word и как се пише всяка сутрин', kakDnHtml());   // Етап 6 [§5.9, F6]
     h += nsCard('Свежест на източниците', '', freshHtml() +
       '<div class="nas-r2">Задачите: лаптопът ги обработи последно ' + (az ? '<b>' + esc(rel(az)) + '</b>' : '<span class="muted">— (още не)</span>') + '</div>' +
       '<div class="nas-r2' + (spOld ? ' amber' : '') + '">Списъкът с хора от Интранета: ' + (sp ? 'от <b>' + esc(rel(sp)) + '</b>' + (spOld ? ' — по-стар от 30 дни' : '') : '<span class="muted">' + (SPL.st === 'missing' ? 'още не е качен (лаптопът)' : 'още не е зареден') + '</span>') + '</div>');
     h += nsCard('Място за снимки', '', mqHtml());
-    h += nsCard('Версия и данни', '', '<ul class="nas-v"><li>AiLab · Етап 5.1 (07.10) · кеш ailab-e5-v3</li><li>Данни към ' + esc(TB.at ? rel(TB.at) : '—') + '</li><li>Чакат връзка: ' + pendingCount() + '</li>' +
+    h += nsCard('Версия и данни', '', '<ul class="nas-v"><li>AiLab · Етап 6 (08.10) · кеш ailab-e6-v1</li><li>Данни към ' + esc(TB.at ? rel(TB.at) : '—') + '</li><li>Чакат връзка: ' + pendingCount() + '</li>' +
       '<li>' + (isStandalone() ? 'Инсталирано като иконка ✓' : 'Съвет: в Safari натисни <b>Сподели ⬆</b> → <b>Добави към началния екран</b>.') + '</li></ul>');
     h += nsCard('Още', '', '<div class="nas-b">' + (DEMO ? '' : '<button class="btn ghost" type="button" data-a="karti">🔎 Карти и търсене (Етап 0)</button>') + (DEMO ? demoPanel() : '') +
       (DEMO ? '<a class="btn ghost" href="./">Изход от демото</a>' : '<button class="btn ghost" type="button" data-a="logout">Изход</button>') + '</div>');
@@ -5259,8 +6275,8 @@
       case 'pcSel': panSelect(tid); break;
       case 'prisT': if (S.den) prisSheet(S.den.obekt || OBEKT_KOD, S.den.data); break;
       case 'seenAll': pcSeenAll(el.getAttribute('data-g')); break;
-      case 'fix': { var tf = findT(tid); if (tf && S.den && !UNDO['pc:' + tid]) openPoyasni(tf, S.den, 'pc'); } break;
-      case 'act': if (!UNDO['pc:' + tid]) openPlus(tid); break;
+      case 'fix': { var tf = findT(tid); if (tf && S.den) openPoyasni(tf, S.den, 'pc'); } break;
+      case 'act': openPlus(tid); break;   // Етап 6: „Отмени“ е в лентата — картата не е заключена [§5.6]
       case 'undo': undoCancel(el.getAttribute('data-k')); break;
       case 'revGrp': { var gk = el.getAttribute('data-g'); S.revOpen[gk] = !S.revOpen[gk]; keepAnchor(renderGroups); } break;
       case 'revCard': S.revCard[tid] = !S.revCard[tid]; keepAnchor(renderGroups); break;
@@ -5292,7 +6308,13 @@
       case 'iskSrc': iskSrc(+el.getAttribute('data-si')); break;
       case 'iskGo': iskGo(el, e); break;
       case 'iskUndo': iskUndo(); break;
-      case 'demoLink': e.preventDefault(); { var dk = el.getAttribute('data-k'); toast(dk === 'teams' ? 'В демото няма истински Тиймс' : dk === 'intranet' ? 'В демото няма истински Интранет' : 'В демото няма OneDrive'); } break;
+      case 'izWin':   // Етап 5.2: Ctrl/Shift/среден клик и телефонът — обичайната връзка; лаптопът — отделният прозорец [ETAP6 §5.10]
+        if (e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1 || !naLaptopa()) break;
+        e.preventDefault(); openIzWin(el.getAttribute('href'));
+        break;
+      case 'demoLink': e.preventDefault(); { var dk = el.getAttribute('data-k');
+        if (dk === 'intranet' && naLaptopa() && !(e.ctrlKey || e.metaKey || e.shiftKey)) { var du = el.getAttribute('data-u') || ''; openIzWin(du, (/(\d+)$/.exec(du) || [])[1] || ''); break; }
+        toast(dk === 'teams' ? 'В демото няма истински Тиймс' : dk === 'intranet' ? 'В демото няма истински Интранет' : 'В демото няма OneDrive'); } break;
       // задачи
       case 'zad': openZad(el.getAttribute('data-id')); break;
       case 'zadF': S.zadF = el.getAttribute('data-v') || 'all'; renderActsTab(); break;
@@ -5300,7 +6322,7 @@
       case 'zadSw': { var zv = el.getAttribute('data-v') === 'intranet' ? 'intranet' : 'ailab'; lset(K5.izg, zv === 'intranet' ? 'intranet' : ''); if (zv === 'intranet') izLoad(); renderActsTab(); } break;
       case 'izF': IZT.f = el.getAttribute('data-v') || 'na_men'; if (WIDE) IZT.sel = null; renderActsTab(); break;
       case 'izO': IZT.o = el.getAttribute('data-v') || 'all'; if (WIDE) IZT.sel = null; renderActsTab(); break;
-      case 'izad': openIzad(+el.getAttribute('data-tid')); break;
+      case 'izad': izadGo(+el.getAttribute('data-tid')); break;
       case 'izRetry': izLoad(true); renderActsTab(); break;
       case 'izAilab': {
         var zi = el.getAttribute('data-id');
@@ -5358,6 +6380,28 @@
       case 'tSoon': go('deistviq'); break;
       case 'tRetry': tRetry(el.getAttribute('data-s')); break;
       case 'tSrc': tSrc(tid); break;
+      // Етап 6 — 🚫 в Табло, „🗂️ Източниците на деня“, „📥 Днес досега“, „✉ Питай“, „Как се прави дневникът“
+      case 'tDn': tDn(tid); break;
+      case 'kakDn': openKakDn(); break;
+      case 'iztTgl': iztTgl(el.getAttribute('data-x'), el.getAttribute('data-b')); break;
+      case 'iztF': iztFSet(el.getAttribute('data-v')); break;
+      case 'iztMore': iztMore(el.getAttribute('data-x'), el.getAttribute('data-b')); break;
+      case 'iztFull': iztFull(el.getAttribute('data-x'), +el.getAttribute('data-id')); break;
+      case 'iztRetry': iztRetry(el.getAttribute('data-x'), el.getAttribute('data-b')); break;
+      case 'iztGo': iztGo(tid); break;
+      case 'iztDob': iztDob(el.getAttribute('data-k')); break;
+      case 'iztDobGo': iztDobGo(el.getAttribute('data-k')); break;
+      case 'iztPris': iztPris(); break;
+      case 'iztPitai': iztPitai(el.getAttribute('data-x'), +el.getAttribute('data-id')); break;
+      case 'dnesOpen': openDnes(el.getAttribute('data-o')); break;
+      case 'pitai': pitaiFromPlus(); break;
+      case 'pitaiT': pitaiT(tid); break;
+      case 'ptGo': ptGo(el.getAttribute('data-k')); break;
+      case 'ptChip': ptChip(el.getAttribute('data-i')); break;
+      case 'ptAzSet': ptAzSet(el.getAttribute('data-i')); break;
+      case 'dSpi': demoSpi(el); break;
+      case 'dTeamsV': demoTeamsV(el); break;
+      case 'dE6No': demoE6No(el); break;
       case 'nextDay': openDay(+el.getAttribute('data-id')); break;
       case 'allActs2': go('deistviq'); break;
       case 'demoSheet': openDemoSheet(); break;
@@ -5396,7 +6440,7 @@
     var t = e.target; if (!t || !t.closest || !sheetEl || !sheetEl.contains(t)) return;
     if (t.getAttribute('data-pks')) pkResults(t.getAttribute('data-pks'));
     if (t === QF) return;   // фокусът е върнат след пречертаване — полето вече е на мястото си
-    if (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && (sheetKind === 'form' || sheetKind === 'py' || sheetKind === 'bel')) setTimeout(function () { if (document.activeElement === t) { try { t.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (x) {} } }, 320);
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && (sheetKind === 'form' || sheetKind === 'py' || sheetKind === 'bel' || sheetKind === 'pitai')) setTimeout(function () { if (document.activeElement === t) { try { t.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (x) {} } }, 320);
   });
   // отложеното пречертаване на формата (P.redo) — чак когато РП спре да пише и не натиска нищо (иначе тапът би „изчезнал“)
   var PDOWN = false;
@@ -5509,6 +6553,9 @@
     [K4.sp, K4.hora, K4.vid, K4.cel, K4.start].concat(Object.keys(RED_K).map(function (k) { return RED_K[k]; })).forEach(function (k) { try { localStorage.removeItem(k); localStorage.removeItem(k + '_demo'); } catch (e) {} });
     // Етап 5: Присъствия, Интранетът, обхватът на графиката, изгледът в Задачи [§6.6]
     [K5.hora, K5.obh, K5.iz, K5.izg].forEach(function (k) { try { localStorage.removeItem(k); localStorage.removeItem(k + '_demo'); } catch (e) {} });
+    // Етап 6: филтърът на „Източниците на деня“, „Това съм аз“; паметта — адресната книга, източниците на деня, прозорецът [§5.12]
+    [K6.iztF, K6.az].forEach(function (k) { try { localStorage.removeItem(k); localStorage.removeItem(k + '_demo'); } catch (e) {} });
+    ADR = null; ADR_ST = ''; PIT = null; IZ6 = {}; IZTS = null; IZW = null; TB.zap = {}; TB.zapAsk = {};
     PRIS.rows = null; PRIS.by = {}; PRIS.first = {}; PRIS.last = {}; PRIS.at = 0; PRIS.sv = ''; PRIS.st = ''; PRIS.det = {}; PRIS.detK = []; PRIS.detSt = {}; PRIS.inited = false;
     IZT.rows = null; IZT.at = 0; IZT.st = ''; IZT.sel = null; IZT.inited = false; IZT.cache = false;
     S.selT = null; S.selDen = null; S.zadSel = null;
@@ -5624,6 +6671,10 @@
       '<button type="button" class="btn ghost" data-a="dSp">Изчисти списъка с хора на телефона</button>' +
       '<button type="button" class="btn ghost" data-a="dPrisNo" aria-pressed="' + !!(D && D.prisNo) + '">' + demoPrisLbl() + '</button>' +
       '<button type="button" class="btn ghost" data-a="dPrisLong" aria-pressed="' + !!(D && D.prisLong) + '">' + demoPrisLbl(true) + '</button>' +
+      // Етап 6 [§5.11]: свежестта при спящ лаптоп; „без таблиците на Етап 6“ (преди 009)
+      '<button type="button" class="btn ghost" data-a="dSpi" aria-pressed="' + !!(D && D.spi) + '">' + demoE6Lbl('spi') + '</button>' +
+      '<button type="button" class="btn ghost" data-a="dTeamsV" aria-pressed="' + !!(D && D.teamsV) + '">' + demoE6Lbl('tv') + '</button>' +
+      '<button type="button" class="btn ghost" data-a="dE6No" aria-pressed="' + !!(D && D.e6No) + '">' + demoE6Lbl('e6') + '</button>' +
       '<button type="button" class="btn ghost" data-a="dReset">Започни демото отначало</button></div>';
   }
   function demoPanel() {
@@ -5668,7 +6719,17 @@
     tochki: function (id) { return later(function () { return D.tochki.filter(function (t) { return t.den_id === id; }).sort(function (a, b) { return a.red - b.red || a.id - b.id; }); }); },
     istini: function (id) { return later(function () { return D.tochki.filter(function (t) { return t.den_id === id; }).map(function (t) { return pick(t, 'id,istina'); }); }); },
     res: function (id) { return later(function () { return D.resheniq.filter(function (r) { return r.den_id === id; }).sort(function (a, b) { return a.kogda < b.kogda ? -1 : a.kogda > b.kogda ? 1 : 0; }); }); },
-    svezhest: function () { return later(function () { return D.svezhest.map(function (s) { return pick(s, 'izvor,posledno,ok,broi,belejka'); }); }); },
+    // Етап 6: лаптопът — пазачът пише на 2 мин (минута преди „сега“); демо панелът: „💻 Лаптопът спи“ (17:02), „Тиймс от вчера“ (09:05)
+    svezhest: function () {
+      return later(function () {
+        return D.svezhest.map(function (s) {
+          var r = pick(s, 'izvor,posledno,ok,broi,belejka');
+          if (s.izvor === 'laptop') r.posledno = D.spi ? dT('2026-09-24T17:02:00+03:00') : new Date(nowMs() - 60000).toISOString();
+          if (s.izvor === 'teams' && D.teamsV) r.posledno = dT('2026-09-23T09:05:00+03:00');
+          return r;
+        });
+      });
+    },
     // 7а (отворените + грешките) · 7б (последните 30 приключени) · 8 (отметките) — като истинските [К9]
     deistviq: function () {
       return later(function () {
@@ -5708,7 +6769,7 @@
           return (b.vajnost || 1) - (a.vajnost || 1) || (da < dz ? -st : da > dz ? st : 0) || (a.red || 0) - (b.red || 0) || a.id - b.id;
         });
         return { data: all.slice(rg[0], rg[1] + 1).map(function (t) {
-          var r = pick(t, FEED_COLS); r.dni = pick(dDen(t.den_id), 'obekt,data,status,versiq,hesh,obnoven'); r.resheniq = []; r.deistviq = []; return r;
+          var r = pick(t, FEED_COLS + (E6.open ? ',k,v_dnevnika' : '')); r.dni = pick(dDen(t.den_id), 'obekt,data,status,versiq,hesh,obnoven'); r.resheniq = []; r.deistviq = []; return r;
         }), count: all.length };
       });
     },
@@ -5781,8 +6842,56 @@
       return later(function () {
         return D.intranet_zadachi.filter(function (r) { return r.v_spisaka !== false; }).sort(function (a, b) { return a.tid - b.tid; }).slice(rg[0], rg[1] + 1).map(function (r) { return pick(r, IZ_COLS); });
       });
-    }
+    },
+    // Етап 6 — като истинските (009_etap6.sql); „без таблиците на Етап 6“ (демо панел) → 42P01 за движението и адресника
+    saobDenK: function (den) {
+      return later(function () {
+        return D.saobshteniq.filter(function (r) { return r.den_id === den; })
+          .sort(dSaobSort).slice(0, 1000).map(function (r) { return pick(r, 'id,kluch,vid,vreme'); });
+      });
+    },
+    saobDen: function (den, vid, rg) {
+      return later(function () { return D.saobshteniq.filter(function (r) { return r.den_id === den && r.vid === vid; }).sort(dSaobSort).slice(rg[0], rg[1] + 1).map(function (r) { return pick(r, SAOB_COLS); }); });
+    },
+    saobIds: function (ids) {
+      return later(function () { return D.saobshteniq.filter(function (r) { return ids.indexOf(r.id) >= 0; }).sort(dSaobSort).slice(0, 60).map(function (r) { return pick(r, SAOB_COLS); }); });
+    },
+    saobDnesK: function (o, data) {
+      return later(function () { return D.saobshteniq.filter(function (r) { return r.obekt === o && r.data === data && r.den_id == null; }).sort(dSaobSort).slice(0, 1000).map(function (r) { return pick(r, 'id,kluch,vid,vreme'); }); });
+    },
+    dvizh: function (o, data) {
+      return later(function () {
+        if (D.e6No) throw { code: '42P01', message: 'relation "public.intranet_dvizhenie" does not exist' };
+        return D.intranet_dvizhenie.filter(function (r) { return r.obekt === o && r.data_sabitie === data; })
+          .sort(function (a, b) { return a.okno_do < b.okno_do ? -1 : a.okno_do > b.okno_do ? 1 : a.id - b.id; }).slice(0, 200)
+          .map(function (r) { return pick(r, 'id,tid,obekt,vid,staro,novo,opisanie,otgovornik,srok,status,data_sabitie,tochnost,okno_ot,okno_do'); });
+      });
+    },
+    // като изгледа adresnik (§2.4): адресът на подателя + „Име <адрес>“ и „Име [mailto:адрес]“ от текста; името — от най-новия
+    adresi: function () {
+      return later(function () {
+        if (D.e6No) throw { code: '42P01', message: 'relation "public.adresnik" does not exist' };
+        var m = {};
+        function put(a, ime, d) {
+          a = String(a || '').toLowerCase(); if (!a) return;
+          var x = m[a] || (m[a] = { adres: a, ime: null, broi: 0, posledno: null, _d: '' });
+          x.broi++; if (!x.posledno || d > x.posledno) x.posledno = d;
+          if (ime && d >= x._d) { x.ime = ime; x._d = d; }
+        }
+        D.saobshteniq.forEach(function (s) {
+          if (s.vid !== 'mail') return;
+          if (/^[^ @<>]+@[^ @<>]+[.][a-zA-Z]{2,}$/.test(s.avtor || '')) put(s.avtor, null, s.data);
+          var re1 = /([A-Za-zА-Яа-я][A-Za-zА-Яа-я .'-]{2,60}) <([^ <>@]+@[^ <>@]+[.][a-zA-Z]{2,})>/g, re2 = /([A-Za-zА-Яа-я][A-Za-zА-Яа-я .'-]{2,60}) \[mailto:([^\] <>@]+@[^\] <>@]+[.][a-zA-Z]{2,})\]/g, x;
+          while ((x = re1.exec(s.tekst || ''))) put(x[2], x[1].replace(/^[ "']+|[ "']+$/g, ''), s.data);
+          while ((x = re2.exec(s.tekst || ''))) put(x[2], x[1].replace(/^[ "']+|[ "']+$/g, ''), s.data);
+        });
+        return Object.keys(m).map(function (k) { var x = m[k]; return { adres: x.adres, ime: x.ime, broi: x.broi, posledno: x.posledno }; })
+          .sort(function (a, b) { return b.broi - a.broi; }).slice(0, 1000);
+      });
+    },
+    tZap: function (ids) { return later(function () { return D.dni.filter(function (d) { return ids.indexOf(d.id) >= 0; }).slice(0, 10).map(function (d) { return pick(d, 'id,zapis_md'); }); }); }
   };
+  function dSaobSort(a, b) { return a.vreme < b.vreme ? -1 : a.vreme > b.vreme ? 1 : a.id - b.id; }
   // като истинската база: външните ключове се проверяват (23503), klient_id е уникален (23505), часът от телефона се пази
   function demoFk(tbl, col, v, ref) {
     return { code: '23503', message: 'insert or update on table "' + tbl + '" violates foreign key constraint "' + tbl + '_' + col + '_fkey"', details: 'Key (' + col + ')=(' + v + ') is not present in table "' + ref + '".' };
@@ -5791,6 +6900,8 @@
     var T = tbl === 'resheniq' ? D.resheniq : tbl === 'deistviq' ? D.deistviq : tbl === 'deistviq_bel' ? D.deistviq_bel : null;
     if (T && row.klient_id && T.some(function (x) { return x.klient_id === row.klient_id; }))
       throw { code: '23505', message: 'duplicate key value violates unique constraint "' + tbl + '_klient_id_key"', details: 'Key (klient_id)=(' + row.klient_id + ') already exists.' };
+    // „без таблиците на Етап 6“ (преди 009): базата още не приема „➕ Включи в дневника“ → листът „Не се записаха“ [§2.2, §5.1]
+    if (D.e6No && tbl === 'resheniq' && row.vid === 'dobavi') throw { code: '23514', message: 'new row for relation "resheniq" violates check constraint "resheniq_vid_check"' };
     if (row.den_id != null && !D.dni.some(function (x) { return x.id === row.den_id; })) throw demoFk(tbl, 'den_id', row.den_id, 'dni');
     if (row.tochka_id != null && !D.tochki.some(function (x) { return x.id === row.tochka_id; })) throw demoFk(tbl, 'tochka_id', row.tochka_id, 'tochki');
     if (tbl === 'deistviq_bel' && !D.deistviq.some(function (x) { return x.id === row.deistvie_id; })) throw demoFk(tbl, 'deistvie_id', row.deistvie_id, 'deistviq');
@@ -5820,7 +6931,7 @@
   function demoLaptop() {
     var t = nowIso();
     D.resheniq.forEach(function (r) {
-      if (r.obraboteno) return;
+      if (r.obraboteno || r.vid === 'dobavi') return;   // „➕“ — само сутрешният пуск (4а), не работникът
       var d = dDen(r.den_id);
       if (r.vid === 'odobri' && d) {
         if (r.versiq !== d.versiq) r.rezultat = 'остаряла версия';
@@ -5836,7 +6947,7 @@
   // Нищо не отива в Интранета — „🧪 готова — така ще я впиша“ с всички полета.
   function demoZadachi() {
     var t = nowIso(), hm0 = hhmm(), n = { proba: 0, dop: 0, resh: 0, razr: 0, otm: 0, izp: 0, gr: 0, bel: 0 };
-    var NV = ['zaqveno', 'dopalni', 'chaka_reshenie', 'chaka_razreshenie', 'greshka'];
+    var NV = ['zaqveno', 'dopalni', 'chaka_reshenie', 'chaka_razreshenie', 'greshka', 'chaka_otgovor'];   // Етап 6: и питането по мейл
     function byId(id) { return D.deistviq.filter(function (a) { return a.id === id; })[0] || null; }
     function note(a, b) { a.belejka = b; a.obnoveno = t; }
     D.deistviq_bel.filter(function (b) { return !b.obraboteno && (b.vid === 'gotovo' || b.vid === 'otmeni'); }).sort(function (x, y) { return x.id - y.id; }).forEach(function (b) {
@@ -5855,6 +6966,8 @@
       else if (x.status === 'vpisano') { y.status = 'greshka'; note(y, '№' + x.id + ' вече е в Интранета (№' + x.vanshen_id + ') — промени я там; AiLab не пипа вписани задачи'); n.gr++; }
     });
     D.deistviq.filter(function (a) { return a.status === 'zaqveno'; }).forEach(function (a) {
+      // Етап 6 [§3.6, §4.5]: питането по мейл не е „начинът не е избран“ — като ailab-pitaniq.ps1: zaqveno → ✉ чака отговор
+      if (a.vid === 'iskane' && danniOf(a).kanal === 'mail') { a.status = 'chaka_otgovor'; note(a, 'питано по мейл ' + ddmm(now()) + ' ' + hm0); n.pit = (n.pit || 0) + 1; return; }
       if ((a.vid === 'za_men' || a.vid === 'vazlozhi') && !a.cel) { a.status = 'dopalni'; note(a, 'липсват данни за Интранета — отвори я в Задачи → Допълни'); n.dop++; }
       else if (a.cel === 'todo') { a.status = 'chaka_razreshenie'; note(a, 'To Do иска разрешение Tasks.ReadWrite (още не е дадено)'); n.razr++; }
       else if (a.vid === 'napomni' || a.vid === 'sreshta' || a.vid === 'iskane') { a.status = 'chaka_reshenie'; note(a, 'начинът още не е решен (въпрос към РП)'); n.resh++; }
@@ -5910,9 +7023,10 @@
     var d = dDen(S.den.id); if (!d) return;
     if (d.status !== 'chernova') { toast('Одобрен или вписан ден не се пипа — лаптопът само предупреждава.'); return; }
     d.versiq += 1; d.hesh = Math.random().toString(16).slice(2, 10); d.obnoven = nowIso();
-    D.tochki.push({ id: ++D.seq, den_id: d.id, razdel: 5, grupa: 'promqna', tekst: 'Доставчикът на арматура потвърди частична доставка — 6 т арматура Ø12 на 29.09, сутринта.', istina: 'saobshteno', vajnost: 2,
-      izvori: [{ n: 13, tip: 'Поща', kratko: 'доставчикът на арматура · потвърждение на частична доставка', vreme: hhmm(), kade: 'Поща/' + hhmm().replace(':', '') + '00_доставка_арматура.eml' }], red: 0 });
-    d.zapis_md = String(d.zapis_md || '').replace('\n\n## 6. ', '\n- Доставчикът на арматура потвърди частична доставка: 6 т Ø12 на 29.09 [13].\n\n## 6. ');
+    D.tochki.push({ id: ++D.seq, den_id: d.id, razdel: 6, grupa: 'promqna', k: 16, v_dnevnika: true, tekst: 'Доставчикът на арматура потвърди частична доставка — 6 т арматура Ø12 на 29.09, сутринта.', istina: 'saobshteno', vajnost: 2,
+      izvori: [{ n: 19, tip: 'Мейл', kratko: 'доставчикът на арматура · потвърждение на частична доставка', vreme: hhmm(), kade: 'Поща/' + hhmm().replace(':', '') + '00_доставка_арматура.eml' }], red: 0 });
+    // Етап 6: доставките са раздел 6 → редът отива преди „## 7.“, със свой ⟦k⟧
+    d.zapis_md = String(d.zapis_md || '').replace('\n\n## 7. ', '\n- Доставчикът на арматура потвърди частична доставка: 6 т Ø12 на 29.09 [19]. ⟦16⟧\n\n## 7. ');
     // като ailab-kachi-den: точка с променен текст е НОВА точка (старата се трие, връзките към нея стават празни)
     var kr = D.tochki.filter(function (x) { return x.den_id === d.id && /^Кулокран 1 е стоял/.test(x.tekst) && !/механикът потвърди/.test(x.tekst); })[0];
     if (kr) {
@@ -5928,7 +7042,7 @@
     if (D.dni.some(function (x) { return x.obekt === 'ag' && x.data === '2026-09-25'; })) { toast('Денят 25.09 вече е качен — „Започни демото отначало“ за нов опит.'); return; }
     var nd = dKratak('ag', '2026-09-25', 'chernova', 1, 51, 'Армировката на плоча +9,30 в сграда 2 започна от ос 1. На обекта — 51 души.', [
       [4, 'promqna', 'Сграда 2, плоча +9,30 — армировката започна от ос 1; до обяд стигна ос 3.', 'saobshteno', 2, [dChat(1, 'ТР на обекта · канал на обекта', '12:40')]],
-      [5, 'promqna', 'Доставени 6 т арматура Ø12 — първата част от закъснялата доставка.', 'saobshteno', 1, [dMail(2, 'доставчикът на арматура · товарителница', '09:15')]],
+      [6, 'promqna', 'Доставени 6 т арматура Ø12 — първата част от закъснялата доставка.', 'saobshteno', 1, [dMail(2, 'доставчикът на арматура · товарителница', '09:15')]],
       [7, 'reshenie', 'Надзорът иска оглед на армировката на +9,30 преди бетона — да се уговори час за понеделник.', 'saobshteno', 2, [dMail(3, 'надзорът · писмо', '14:05')]]
     ], nowIso());
     dPhSrc(nd, dFirstChat(nd), 3);   // 3 снимки към първата промяна [§4.9]
@@ -5944,8 +7058,9 @@
   // --- помощни за примерните данни ---
   function dT(s) { return new Date(s).toISOString(); }
   function dSrc(n, tip, kratko, vreme, kade) { return { n: n, tip: tip, kratko: kratko, vreme: vreme, kade: kade || '' }; }
-  function dMail(n, k, v) { return dSrc(n, 'Поща', k, v, 'Поща/' + v.replace(':', '') + '00.eml'); }
-  function dChat(n, k, v) { return dSrc(n, 'Тиймс', k, v, 'Оригинали/' + v.replace(':', '') + '00.json'); }
+  // tip — точно като истинските („Мейл“, „Тиймс чат“, „Тиймс канал“, „Протокол“, „Присъствия“) [ETAP6 §5.11]
+  function dMail(n, k, v) { return dSrc(n, 'Мейл', k, v, 'Поща/' + v.replace(':', '') + '00.eml'); }
+  function dChat(n, k, v) { return dSrc(n, /·\s*канал/.test(k) ? 'Тиймс канал' : 'Тиймс чат', k, v, 'Оригинали/' + v.replace(':', '') + '00.json'); }
   function dMd(o) { return RAZDELI.map(function (t, i) { return '## ' + (i + 1) + '. ' + t + '\n' + (o[i + 1] || 'Не е постъпила информация.'); }).join('\n\n'); }
   // Източник от Тиймс получава измислено ид на съобщението = моментът му в ms + n на източника — правилото на истинското [К4, К34].
   // Точките се строят преди деня (датата я знае само dAdd) → ид-то се дописва тук; цитирано от две точки — същото ид.
@@ -5995,14 +7110,14 @@
       [4, 'Зидария на етаж {e}, сграда {b} — завършени {p}%.'],
       [4, 'Бетон на колоните по ос {o}, сграда {b} — излят, взети пробни кубчета.'],
       [4, 'Фасада на сграда {b} — клинкерът стигна {p}%.'],
-      [9, 'ВиК — изпитване на вертикалните щрангове в сграда {b}, без течове.'],
+      [5, 'ВиК — изпитване на вертикалните щрангове в сграда {b}, без течове.'],
       [4, 'Ел. скари на етаж {e}, сграда {b} — монтирани.']
     ];
     var SK_P = [
       [4, 'Окачена фасада — монтирани панели до ниво {e}.'],
-      [6, 'Кулокран 2 — добавена секция, кранът работи на новата височина.'],
+      [4, 'Кулокран 2 — добавена секция, кранът работи на новата височина.'],
       [4, 'Шпакловка на етаж {e} — завършени {p}%.'],
-      [5, 'Доставени стъклопакети за ниво {e}.'],
+      [6, 'Доставени стъклопакети за ниво {e}.'],
       [4, 'Гипсокартон на етаж {e} — затворени стените в секция {b}.'],
       [4, 'Климатизация — положени тръби до ниво {e}.']
     ];
@@ -6058,9 +7173,9 @@
       [7, 'reshenie', 'Потвърди поръчката на 41 м³ бетон C25/30 за утре, 07:30.', 'provereno', 2, [mail(3, 'бетонов възел · потвърждение на поръчка', '11:20')]]]);
     dKratak('ag', '2026-09-17', 'vpisana', 1, 52, 'Бетонирана плоча +6,20 в сграда 2 — 41 м³, помпа 07:30–12:10. Взети 6 пробни кубчета.', [
       [4, 'promqna', 'Бетонирана плоча +6,20, сграда 2 — 41 м³ C25/30, помпа 07:30–12:10.', 'provereno', 2, [mail(1, 'бетонов възел · 6 товарителници', '12:30')]],
-      [9, 'promqna', 'Взети 6 пробни кубчета — за 7 и за 28 дни.', 'provereno', 1, [agCh(2, '12:45')]]]);
+      [5, 'promqna', 'Взети 6 пробни кубчета — за 7 и за 28 дни.', 'provereno', 1, [agCh(2, '12:45')]]]);
     dKratak('ag', '2026-09-18', 'vpisana', 1, 47, 'Доставени 18 т арматура (частична доставка). Надзорът прие армировката на стълбището в сграда 1.', [
-      [5, 'promqna', 'Доставени 18 т арматура — частична доставка по поръчката за +9,30.', 'provereno', 2, [mail(1, 'доставчикът на арматура · 2 товарителници', '10:15')]],
+      [6, 'promqna', 'Доставени 18 т арматура — частична доставка по поръчката за +9,30.', 'provereno', 2, [mail(1, 'доставчикът на арматура · 2 товарителници', '10:15')]],
       [4, 'promqna', 'Армировката на стълбището в сграда 1 е приета от надзора.', 'provereno', 1, [agCh(2, '14:30')]]]);
     dKratak('ag', '2026-09-19', 'vpisana', 1, 21, 'Съботна смяна — кофражисти и фасада, общо 21 души. Без доставки.', [
       [3, 'promqna', 'Съботна смяна: 12 кофражисти и 9 души на фасадата.', 'provereno', 1, [src(1, 'Присъствия', 'въведено за 2 бригади', '08:05', 'Присъствия/2026-09-19.json')]]]);
@@ -6071,7 +7186,7 @@
       [4, 'promqna', 'Фасада на сграда 3 — клинкерът стигна 70%.', 'provereno', 1, [chat(2, 'бригадир фасада · чат „Амур Гардънс“', '16:10')]]]);
     dKratak('ag', '2026-09-22', 'vpisana', 3, 51, 'Започна кофражът на плоча +9,30 в сграда 2 от ос 1. Доставчикът на арматура обеща остатъка за 25.09.', [
       [4, 'promqna', 'Кофраж на плоча +9,30, сграда 2 — започнат от ос 1.', 'provereno', 2, [agCh(1, '07:40')]],
-      [5, 'reshenie', 'Доставчикът на арматура обещава остатъка (≈14 т) за 25.09 — да се следи.', 'provereno', 2, [mail(2, 'доставчикът на арматура · потвърждение на срок', '13:20')]]]);
+      [6, 'reshenie', 'Доставчикът на арматура обещава остатъка (≈14 т) за 25.09 — да се следи.', 'provereno', 2, [mail(2, 'доставчикът на арматура · потвърждение на срок', '13:20')]]]);
     var d23 = dKratak('ag', '2026-09-23', 'odobrena', 2, 50, 'Кофражът на +9,30 стигна ос 5. Инвеститорът поиска график за фасадата на сграда 4.', [
       [4, 'promqna', 'Кофраж на плоча +9,30, сграда 2 — до ос 5.', 'saobshteno', 2, [agCh(1, '16:50')]],
       [7, 'reshenie', 'Инвеститорът иска график за фасадата на сграда 4 до края на седмицата.', 'saobshteno', 2, [mail(2, 'Инвеститор · писмо', '11:02')]],
@@ -6079,9 +7194,12 @@
     D.resheniq.push({ id: ++D.seq, den_id: d23.id, tochka_id: null, vid: 'odobri', tekst: null, versiq: 2, hesh: d23.hesh, ustroistvo: 'iPhone · иконка', kogda: T('2026-09-23T19:12:00+03:00'), obraboteno: null, rezultat: null });
 
     // 24.09 — основният пример: 50 души; кофраж +9,30 сграда 2; доставчикът на арматура закъснява; чат 10 / Присъствия 8 кофражисти.
+    // Етап 6: разделите — по 12-те заглавия на указанията; tip — като истинските; източник „Интранет“ с tid (#7001 — на точката
+    // от Тиймс + мейл + Интранет, #7027 — обобщеният ред за новите задачи, #7010 — смяна на статус); точка 14 е добавена с
+    // „➕ Включи в дневника“ (v3); „фактура № 7001“ в текста — без пил (голо число без „задача/Интранет“) [§5.11, §5.3 б]
     var s1 = chat(1, 'ТР на обекта · канал на обекта: „кофражът е до ос 7, на плочата сме 10 кофражисти“', '07:18');
     // [2] — съобщение от Тиймс със снимки (като истинските: kade = Оригинали/…, ид от dMsgFix) → в листа „Източници“ под него има плочки
-    var s2 = src(2, 'Снимка', 'ТР на обекта · канал на обекта: снимки от плоча +9,30', '16:40', 'Оригинали/164000.json');
+    var s2 = src(2, 'Тиймс канал', 'ТР на обекта · канал на обекта: снимки от плоча +9,30', '16:40', 'Оригинали/164000.json');
     var s3 = src(3, 'Присъствия', 'бригада кофражисти — 8 души, въведено в 08:10', '08:10', 'Присъствия/2026-09-24.json');
     var s4 = mail(4, 'доставчикът на арматура · писмо за нов срок на арматурата', '11:04');
     var s5 = chat(5, 'ПТО · чат на ПТО: „арматурата няма да дойде преди 01.10“', '11:30');
@@ -6091,36 +7209,46 @@
     var s9 = chat(9, 'механизатор · чат „Амур Гардънс“: „кранът стои, сменяме маркуч“', '13:05');
     var s10 = mail(10, 'подизпълнител кофраж · количествена сметка за поредния акт', '09:41');
     var s11 = mail(11, 'Инвеститор · въпрос за датата на бетона', '16:12');
-    var s12 = src(12, 'Файл', 'лаборатория · протокол № 118, 7-дневни кубчета', '14:20', 'Файлове/Протокол-118-демо.pdf');
+    var s12 = src(12, 'Протокол', 'лаборатория · протокол № 118, 7-дневни кубчета', '14:20', 'Файлове/Протокол-118-демо.pdf');
+    var s13 = chat(13, 'ТР на обекта · канал на обекта: „инвеститорът пак пита за бетона“', '16:30');
+    var s14 = { n: 14, tip: 'Интранет', kratko: 'Интранет · #7001', vreme: '14:05', kade: 'Интранет.md', tid: 7001 };
+    var s15 = { n: 15, tip: 'Интранет', kratko: 'Интранет · #7027', vreme: '10:15', kade: 'Интранет.md', tid: 7027 };
+    var s16 = { n: 16, tip: 'Интранет', kratko: 'Интранет · #7010', vreme: '14:05', kade: 'Интранет.md', tid: 7010 };
+    var s17 = chat(17, 'бригадир кофраж · канал на обекта: „почистихме около стълбището на сграда 1“', '08:04');
+    var s18 = chat(18, 'Workflows · канал на обекта: напомняне за доставката на арматура', '11:35');
     dAdd('ag', '2026-09-24', 'chernova', 3, 50,
       'Нормален работен ден — 50 души. Кофражът на плоча +9,30 в сграда 2 е довършен до ос 7, армировката започва утре. Доставчикът на арматура отлага доставката с 5–10 дни.', [
         [4, 'promqna', 'Сграда 2, плоча +9,30 — кофражът е довършен до ос 7. Армировката започва утре от 07:00.', 'saobshteno', 2, [s1, s2]],
-        [5, 'promqna', 'Доставени 24 м³ бетон C25/30 за стълбищната клетка на сграда 1 — 2 миксера, 09:10–10:40.', 'provereno', 1, [s6]],
+        [6, 'promqna', 'Доставени 24 м³ бетон C25/30 за стълбищната клетка на сграда 1 — 2 миксера, 09:10–10:40.', 'provereno', 1, [s6]],
         [4, 'promqna', 'Сграда 3 — скелето по северната фасада е демонтирано; фасадната бригада минава на сграда 4.', 'saobshteno', 1, [s7]],
-        [9, 'promqna', '7-дневните кубчета от плоча +6,20 (бетон от 17.09) дават 31,2 MPa — в норма за C25/30.', 'provereno', 1, [s12]],
-        [8, 'reshenie', 'Доставчикът на арматура отлага доставката на арматура Ø12/Ø16 (≈14 т) с 5–10 дни. Чакаме или поръчваме частично от друг доставчик? Бетонът на +9,30 по график е на 02.10.', 'saobshteno', 3, [s4, s5]],
-        [10, 'reshenie', 'Подизпълнителят по кофража иска потвърждение на количествата за поредния акт до петък, 25.09.', 'saobshteno', 2, [s10]],
-        [7, 'reshenie', 'Инвеститорът пита за нова дата на бетона на +9,30 заради закъснението на арматурата — чака отговор от теб. Иска и писмено потвърждение, че фасадата на сграда 4 остава по график, и кога точно ще е огледът на армировката с надзора, за да планира своя технически контрол на обекта.', 'saobshteno', 2, [s11]],
+        [5, 'promqna', '7-дневните кубчета от плоча +6,20 (бетон от 17.09) дават 31,2 MPa — в норма за C25/30.', 'provereno', 1, [s12]],
+        [8, 'reshenie', 'Доставчикът на арматура отлага доставката на арматура Ø12/Ø16 (≈14 т) с 5–10 дни. Чакаме или поръчваме частично от друг доставчик? Бетонът на +9,30 по график е на 02.10.', 'saobshteno', 3, [s5, s4, s18]],
+        [7, 'reshenie', 'Подизпълнителят по кофража иска потвърждение на количествата за поредния акт до петък, 25.09 (към фактура № 7001).', 'saobshteno', 2, [s10]],
+        [7, 'reshenie', 'Инвеститорът пита за нова дата на бетона на +9,30 заради закъснението на арматурата — чака отговор от теб. Иска и писмено потвърждение, че фасадата на сграда 4 остава по график, и кога точно ще е огледът на армировката с надзора, за да планира своя технически контрол на обекта.', 'saobshteno', 2, [s11, s13, s14]],
         [3, 'neprovereno', 'Разлика в броя кофражисти: чатът казва 10, Присъствия — 8. В дневника засега са 8 (по Присъствия).', 'osporeno', 2, [s1, s3]],
-        [6, 'neprovereno', 'Кулокран 1 е стоял 13:00–15:00 (смяна на хидравличен маркуч) — само от едно съобщение, механикът не е потвърдил.', 'saobshteno', 2, [s9]],
-        [12, 'neprovereno', 'Няма данни от Интранет след вчера, 18:05 — задачите на обекта може да не са отразени.', 'saobshteno', 1, []],
+        [8, 'neprovereno', 'Кулокран 1 е стоял 13:00–15:00 (смяна на хидравличен маркуч) — само от едно съобщение, механикът не е потвърдил.', 'saobshteno', 2, [s9]],
+        [11, 'neprovereno', 'Часът за огледа на армировката с надзора не е потвърден — няма писмо от надзора.', 'saobshteno', 1, []],
         [2, 'fakt', 'Слънчево, 14–29 °C, вятър до 4 m/s — без ограничения за крана и бетона.', 'provereno', 1, [s8]],
-        [3, 'fakt', 'Общо 50 души на обекта по Присъствия, 8 бригади.', 'provereno', 1, [s3]]
+        [3, 'fakt', 'Общо 50 души на обекта по Присъствия, 8 бригади.', 'provereno', 1, [s3]],
+        [7, 'fakt', 'Интранет: нови задачи 1 (#7027) — „Предай екзекутивите на ВиК за сграда 1“.', 'provereno', 1, [s15]],
+        [4, 'promqna', 'Площадката около стълбището на сграда 1 е почистена — там отиват палетите с клинкер.', 'saobshteno', 1, [s17]],
+        [7, 'fakt', 'Интранет #7010 „Прегледай количествената сметка за поредния акт по кофража“: статус Текуща → Стартирала.', 'provereno', 1, [s16]]
       ], dMd({
-        // Етап 5 (§6.5): маркерите ⟦k⟧ (k = редът на точката по-долу); фактите 11–12 нямат карта — само тук; ред с ⟦8,12⟧;
-        // етикетите „**Кран и помпа:**“ и „**Пробни кубчета:**“ носят номерата под тях [К8]
+        // Етап 5 (§6.5): маркерите ⟦k⟧ (k = редът на точката по-горе); фактите нямат карта — само тук; ред с ⟦8,12⟧;
+        // етикетите „**Кран и помпа:**“ и „**Пробни кубчета:**“ носят номерата под тях [К8]; Етап 6: етикет със свой ⟦k⟧,
+        // после празен ред и таблица — остава (П5); разделите — 12-те на указанията [§5.1]
         1: 'Нормален работен ден, **50 души** на обекта (по Присъствия). Кофражът на плоча +9,30 в сграда 2 е довършен до ос 7; армировката започва утре от 07:00 [1][2]. ⟦12,1⟧\n**Риск:** доставчикът на арматура отлага арматурата Ø12/Ø16 с 5–10 дни [4][5] — застрашава бетона на +9,30 по график (02.10). ⟦5⟧',
         2: 'Слънчево, 14–29 °C, вятър до 4 m/s. Без ограничения за крана и бетона [8]. ⟦11⟧',
-        3: '- Хора на обекта по Присъствия: 50 (нето); въведени 55; не влизат в нето: Ръководство 5 ⟦12⟧\n\n| Бригада | Къде | Хора |\n|---|---|---|\n| Кофражисти | плоча +9,30, сграда 2 | 8 (чат: 10) [1][3] ⟦8,12⟧ |\n| Арматуристи | стълбище, сграда 1 | 6 ⟦12⟧ |\n| Зидари | сграда 3 | 8 ⟦12⟧ |\n| Фасада | сграда 3 → 4 | 9 [7] ⟦12⟧ |\n| Бетонджии | стълбище, сграда 1 | 4 [6] ⟦12⟧ |\n| ВиК | вертикални щрангове | 4 ⟦12⟧ |\n| Електро | ел. инсталация, сграда 1 | 5 ⟦12⟧ |\n| Общи работници | почистване, пренасяне | 6 ⟦12⟧ |\n| **Общо** | | **50** [3] ⟦8,12⟧ |',
-        4: '- Сграда 2, плоча +9,30 — кофражът е довършен до ос 7 [1][2]. ⟦1⟧\n- Сграда 1 — бетон на стълбищната клетка, 24 м³ C25/30 [6]. ⟦2⟧\n- Сграда 3 — демонтирано скелето по северната фасада; бригадата минава на сграда 4 [7]. ⟦3⟧',
-        5: '- Бетонов възел — 24 м³ C25/30, 2 миксера, 09:10–10:40 [6]. ⟦2⟧\n- Доставчикът на арматура — доставката на арматура Ø12/Ø16 (≈14 т) се отлага с 5–10 дни [4][5]. ⟦5⟧',
-        6: '**Кран и помпа:** ⟦9,2⟧\n- Кулокран 1 — стоял 13:00–15:00, смяна на хидравличен маркуч (само от едно съобщение) [9]. ⟦9⟧\n- Помпа за бетон 09:00–11:00. ⟦2⟧',
-        7: '- **Чака РП:** доставчикът на арматура — чакаме или поръчваме частично от друг доставчик? [4][5] ⟦5⟧\n- **Чака РП:** количествата за поредния акт — до петък, 25.09 [10]. ⟦6⟧\n- Инвеститорът пита за нова дата на бетона на +9,30 [11]. ⟦7⟧',
+        3: '- Хора на обекта по Присъствия: 50 (нето); въведени 55; не влизат в нето: Ръководство 5 ⟦12⟧\n\nХора по бригади: ⟦8,12⟧\n\n| Бригада | Къде | Хора |\n|---|---|---|\n| Кофражисти | плоча +9,30, сграда 2 | 8 (чат: 10) [1][3] ⟦8,12⟧ |\n| Арматуристи | стълбище, сграда 1 | 6 ⟦12⟧ |\n| Зидари | сграда 3 | 8 ⟦12⟧ |\n| Фасада | сграда 3 → 4 | 9 [7] ⟦12⟧ |\n| Бетонджии | стълбище, сграда 1 | 4 [6] ⟦12⟧ |\n| ВиК | вертикални щрангове | 4 ⟦12⟧ |\n| Електро | ел. инсталация, сграда 1 | 5 ⟦12⟧ |\n| Общи работници | почистване, пренасяне | 6 ⟦12⟧ |\n| **Общо** | | **50** [3] ⟦8,12⟧ |',
+        4: '- Сграда 2, плоча +9,30 — кофражът е довършен до ос 7 [1][2]. ⟦1⟧\n- Сграда 3 — демонтирано скелето по северната фасада; бригадата минава на сграда 4 [7]. ⟦3⟧\n- Сграда 1 — почистена площадката около стълбището за палетите с клинкер [17]. ⟦14⟧\n\n**Кран и помпа:** ⟦9,2⟧\n- Кулокран 1 — стоял 13:00–15:00, смяна на хидравличен маркуч (само от едно съобщение) [9]. ⟦9⟧\n- Помпа за бетон 09:00–11:00. ⟦2⟧',
+        5: '**Пробни кубчета:** ⟦4⟧\n- 7-дневните кубчета от плоча +6,20 (бетон от 17.09) — 31,2 MPa при клас C25/30 [12]. ⟦4⟧\n- 28-дневните — на 15.10. ⟦4⟧',
+        6: '- Бетонов възел — 24 м³ C25/30, 2 миксера, 09:10–10:40 [6]. ⟦2⟧\n- Доставчикът на арматура — доставката на арматура Ø12/Ø16 (≈14 т) се отлага с 5–10 дни [4][5]. ⟦5⟧',
+        7: '- **Чака РП:** доставчикът на арматура — чакаме или поръчваме частично от друг доставчик? [4][5] ⟦5⟧\n- **Чака РП:** количествата за поредния акт — до петък, 25.09 [10]. ⟦6⟧\n- Инвеститорът пита за нова дата на бетона на +9,30 [11][13]. ⟦7⟧\n- Интранет #7001 „Изпрати на инвеститора графика за фасадата на сграда 4“: срок 25.09.2026 → 30.09.2026 [14]. ⟦7⟧\n- Интранет #7010 „Прегледай количествената сметка за поредния акт по кофража“: статус Текуща → Стартирала [16]. ⟦15⟧\n- Интранет: нови задачи 1 (#7027) [15]. ⟦13⟧',
         8: '- Закъснението на арматурата може да измести бетона на +9,30 от 02.10 към 07–09.10. ⟦5⟧\n- Престой на крана 2 ч — кофражистите са пренасяли ръчно [9]. ⟦9⟧',
-        9: '**Пробни кубчета:** ⟦4⟧\n- 7-дневните кубчета от плоча +6,20 (бетон от 17.09) — 31,2 MPa при клас C25/30 [12]. ⟦4⟧\n- 28-дневните — на 15.10. ⟦4⟧',
-        10: '- Доставчикът на арматура — писмо за новия срок на доставката [4]. ⟦5⟧\n- Подизпълнителят по кофража — количествена сметка за поредния акт [10]. ⟦6⟧\n- Инвеститорът — въпрос за датата на бетона [11]. ⟦7⟧',
-        11: '- Броят кофражисти: чат 10 / Присъствия 8 [1][3]. ⟦8⟧\n- Престоят на крана — само от едно съобщение [9]. ⟦9⟧\n- Интранет — няма данни след 23.09, 18:05. ⟦10⟧',
-        12: 'Тиймс ✓ 17:18 · Поща ✓ 17:05 · Присъствия ✓ 16:40 · Сървър ✓ 17:00 · Интранет ⚠️ 23.09 18:05.\nСъобщения: 112 · мейли: 23 · снимки: 14.'
+        9: '- Инвеститорът иска писмено потвърждение, че фасадата на сграда 4 остава по график [11]. ⟦7⟧',
+        10: '- Армировка на плоча +9,30 в сграда 2 от 07:00; оглед с надзора — след ос 4. ⟦1⟧',
+        11: '- Броят кофражисти: чат 10 / Присъствия 8 [1][3]. ⟦8⟧\n- Престоят на крана — само от едно съобщение [9]. ⟦9⟧\n- Огледът на армировката с надзора — часът още не е потвърден. ⟦10⟧',
+        12: 'Тиймс ✓ 17:18 · Поща ✓ 17:05 · Присъствия ✓ 16:40 · Сървър ✓ 17:00 · Интранет ✓ 16:02 (6 събития, Интранет.md).\nСъобщения: 52 · мейли: 12 · снимки: 30.'
       }), 'a41f9c2e');
 
     // Затворени решения (§8): с действие, с коментар, с потвърждение — не бива да се виждат в „Изисква решение“.
@@ -6172,6 +7300,7 @@
     });
     demoE4(d23, dDayOf('ag', '2026-09-24'), k23, { s1: s1, s2: s2, s4: s4, s5: s5, s6: s6, s7: s7, s9: s9, s10: s10, s11: s11 });
     demoE5(k23);
+    demoE6(dDayOf('ag', '2026-09-24'), dDayOf('soft', '2026-09-24'));
   }
   // ---- Етап 5 (§6.5): Присъствия, Интранетът, „📘/🚫“ — всичко измислено ----
   function demoE5(k23) {
@@ -6191,6 +7320,141 @@
       k23.zapis_md = String(k23.zapis_md || '').replace(MARK_RE, '');
     }
     D.intranet_zadachi = demoIntranet();
+  }
+  // ---- Етап 6 (§5.11): съобщенията на деня (и неизползваните), голям ден, движението в Интранета, „➕“, „✉ Питай“, свежестта ----
+  // Всичко измислено: адресите …@primer.test, имената „Demo …“, ролите вместо имена.
+  var LONG6 = 'по-дълго съобщение за пробата на „Покажи целия ›“: кофражът на ниво 9 е затворен до ос 6, остатъкът — утре сутринта; ' +
+    'панелите на фасадата за ниво 8 са монтирани, за ниво 9 чакаме доставката; кранът е свободен след 14:00, затова довършителните ' +
+    'бригади качват материалите за етаж 6 преди обяд; помпите в сутерена работят и водата спада — довършването там може да продължи ' +
+    'от понеделник, ако нивото остане под пода; скелето на южната страна се мести утре — моля, оставете свободен подхода откъм портала.';
+  function dMsg(d, o) {   // d — денят (или {obekt, data} за днешните, още без чернова — den_id празно, F12 §2.7)
+    var r = Object.assign({ id: ++D.seq, den_id: d.id != null ? d.id : null, obekt: d.obekt, data: d.data, kluch: null, vid: 'teams', msg_id: null, vreme: null, avtor: 'ТР на обекта',
+      izvor_vid: 'kanal', izvor: 'канал на обекта', tema: null, otgovor: null, do_kopie: null, tekst: '', link: 'demo:', snimki_broi: 0, failove: [], original_url: null, belejka: null }, o);
+    var ms = Date.parse(r.data + 'T' + r.hm + ':00+03:00') + (r.sek || 0) * 1000 + (r.id % 997), u = new Date(ms);
+    delete r.hm; delete r.sek;
+    r.vreme = u.toISOString();
+    if (r.vid === 'mail') { r.kluch = r.data + '_' + pad(u.getUTCHours()) + pad(u.getUTCMinutes()) + pad(u.getUTCSeconds()) + '_mail.txt'; r.izvor_vid = 'mail'; r.izvor = null; r.link = null; r.original_url = 'demo:'; }
+    else { r.kluch = String(ms); r.msg_id = r.kluch; }
+    D.saobshteniq.push(r);
+    return r;
+  }
+  function demoE6(a24, k24) {
+    var T = dT;
+    D.e6No = false; D.spi = false; D.teamsV = false;
+    // свежестта: „свежи“ при спрения часовник 17:42 (Интранетът — от 16:02); лаптопът — пазачът пише на 2 мин (demoApi.svezhest)
+    D.svezhest.forEach(function (s) { if (s.izvor === 'intranet') { s.posledno = T('2026-09-24T16:02:00+03:00'); s.ok = true; s.broi = 20; s.belejka = 'Моите задачи — 20 задачи, 6 събития за Амур.'; } });
+    D.svezhest.push({ izvor: 'laptop', posledno: T('2026-09-24T17:40:00+03:00'), ok: true, broi: null, belejka: 'Пазачът пише на 2 мин.' });
+    if (a24) {
+      var A = function (o) { return dMsg(a24, o); };
+      // 15 неизползвани: 5 „Добро утро“, 2 от бота Workflows (времето), 3 уточнения, 3 мейла (вкл. от „аз“), 2 снимки без текст
+      [['06:45', 'ТР на обекта'], ['06:48', 'бригадир кофраж'], ['06:52', 'бригадир фасада'], ['06:58', 'механизатор'], ['07:03', 'Demo Tehnik']].forEach(function (x) { A({ hm: x[0], avtor: x[1], tekst: 'Добро утро!' }); });
+      A({ hm: '06:30', avtor: 'Workflows', tekst: 'Прогноза за обекта: слънчево, 14–29 °C, вятър до 4 m/s.' });
+      A({ hm: '12:30', avtor: 'Workflows', tekst: 'Прогноза за следобеда: без валежи, вятър до 5 m/s.' });
+      A({ hm: '10:20', avtor: 'бригадир кофраж', tekst: 'Бетонът за стълбището е приет — 24 м³, без забележки. Пробните кубчета са надписани.' });
+      A({ hm: '13:40', avtor: 'ТР на обекта', izvor_vid: 'chat', izvor: 'Амур Гардънс', tekst: 'Уточнение: огледът с надзора е след ос 4, не след ос 3.' });
+      A({ hm: '15:20', avtor: 'бригадир фасада', izvor_vid: 'chat', izvor: 'Амур Гардънс', tekst: 'Палетите с клинкер ще ги свалим утре сутрин, преди армировката.' });
+      A({ hm: '09:12', vid: 'mail', avtor: 'demo.tehnik@primer.test', tema: 'RE: Огледът на армировката', do_kopie: 'Копие: snab@primer.test;office@primer.test',
+        tekst: 'Здравейте,\n\nОгледът на армировката с надзора е възможен в понеделник след 10:00.\n\nПоздрави,\nDemo Tehnik\n\nFrom: Demo Snab [mailto:snab@primer.test]\nSent: Wednesday, September 23, 2026 5:10 PM\nSubject: Огледът на армировката\n\nКога е огледът?' });
+      A({ hm: '14:55', vid: 'mail', avtor: 'snab@primer.test', tema: 'Клинкер за сграда 4 — уточнение', do_kopie: 'Копие: demo.tehnik@primer.test;office@primer.test',
+        tekst: 'Здравейте,\n\nКлинкерът за сграда 4 е поръчан; доставката е в понеделник сутрин. Моля, осигурете място до сградата.\n\nПоздрави,\nDemo Snab' });
+      A({ hm: '16:50', vid: 'mail', avtor: 'rp.demo@primer.test', tema: 'Седмична оперативка', do_kopie: 'Копие: office@primer.test',
+        tekst: 'Колеги,\n\nОперативката е в петък от 08:30 на обекта.\n\nTi Demo <rp.demo@primer.test>' });
+      A({ hm: '11:05', avtor: 'бригадир кофраж', tekst: '', snimki_broi: 2 });
+      A({ hm: '15:45', avtor: 'бригадир фасада', izvor_vid: 'chat', izvor: 'Амур Гардънс', tekst: '', snimki_broi: 2 });
+      // обработено „➕ Включи в дневника“ — точка 14 е добавена в v3 от съобщението ѝ [§3.1]
+      var t14 = D.tochki.filter(function (t) { return t.den_id === a24.id && t.k === 14; })[0], k14 = t14 ? srcKey(t14.izvori[0]) : null;
+      if (k14) D.resheniq.push({ id: ++D.seq, den_id: a24.id, tochka_id: null, vid: 'dobavi', tekst: k14, versiq: 2, hesh: null, ustroistvo: 'iPhone · иконка', kogda: T('2026-09-24T08:20:00+03:00'),
+        obraboteno: T('2026-09-24T09:04:00+03:00'), rezultat: 'нанесено във v3: точка 14' });
+    }
+    // днешните съобщения след черновата — без den_id, по (обект, дата) → „📥 Днес досега“ [§5.14]
+    var dn = { obekt: 'ag', data: '2026-09-24' }, dk = { obekt: 'soft', data: '2026-09-24' };
+    dMsg(dn, { hm: '17:25', tekst: 'Утре от 07:00 започваме армировката на +9,30 — кранът е запазен за нас до 10:00.' });
+    dMsg(dn, { hm: '17:31', avtor: 'бригадир фасада', izvor_vid: 'chat', izvor: 'Амур Гардънс', tekst: 'Палетите с клинкер са преместени до сграда 4.' });
+    dMsg(dn, { hm: '17:36', avtor: 'Demo Tehnik', izvor_vid: 'chat', izvor: 'чат на ПТО', tekst: 'Писмото до доставчика на арматура е пратено — чакаме отговор до утре на обяд.' });
+    dMsg(dn, { hm: '17:38', vid: 'mail', avtor: 'snab@primer.test', tema: 'Клинкер за сграда 4 — потвърждение', do_kopie: 'Копие: demo.tehnik@primer.test',
+      tekst: 'Здравейте,\n\nПотвърждавам доставката на клинкер за сграда 4 в понеделник, 07:30.\n\nПоздрави,\nDemo Snab' });
+    dMsg(dk, { hm: '17:20', tekst: 'Помпите в сутерена работят, водата спада.' });
+    dMsg(dk, { hm: '17:33', avtor: 'бригадир фасада', izvor_vid: 'chat', izvor: 'Скай Тауърс', tekst: 'Панелите за ниво 9 пристигат утре сутрин.' });
+    dMsg(dk, { hm: '17:40', vid: 'mail', avtor: 'office@primer.test', tema: 'График на фасадата — ниво 9', tekst: 'Здравейте,\n\nИзпращаме актуализирания график на фасадата за ниво 9.\n\nПоздрави,\nDemo Office' });
+    // голям ден: Скай 24.09 — 130 съобщения, 20 от тях в точки (2 промени по 3 + 2 факта по 7) → страниците по 30 [§5.13 т.4]
+    if (k24) {
+      var big = [], AV = ['ТР на обекта', 'бригадир фасада', 'Demo Tehnik', 'механизатор', 'бригадир довършителни'];
+      for (var i = 1; i <= 130; i++) {
+        var mn = 7 * 60 + Math.floor(i * 4.5);
+        big.push(dMsg(k24, { hm: pad(Math.floor(mn / 60)) + ':' + pad(mn % 60), sek: i % 60, avtor: AV[i % 5], izvor_vid: i % 3 ? 'chat' : 'kanal', izvor: i % 3 ? 'Скай Тауърс' : 'канал на обекта',
+          tekst: 'Демо съобщение ' + i + (i % 9 === 0 ? ' — ' + LONG6 : '.') }));
+      }
+      var inP = big.filter(function (r, j) { return j % 6 === 0; }).slice(0, 20), nn = 0;
+      var srcs = function (l) {
+        return l.map(function (r) {
+          var d = new Date(r.vreme);
+          return { n: ++nn, tip: r.izvor_vid === 'kanal' ? 'Тиймс канал' : 'Тиймс чат', kratko: r.avtor + ' · ' + (r.izvor_vid === 'kanal' ? 'канал на обекта' : 'чат „Скай Тауърс“'),
+            vreme: hhmm(d), kade: 'Оригинали/' + pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds()) + '_' + r.kluch + '_20260101000000000.json' };
+        });
+      };
+      var kp = D.tochki.filter(function (t) { return t.den_id === k24.id; }).sort(function (a, b) { return a.red - b.red; });
+      if (kp[0]) kp[0].izvori = srcs(inP.slice(0, 3));
+      if (kp[1]) kp[1].izvori = srcs(inP.slice(3, 6));
+      var kk = kp.reduce(function (m, t) { return Math.max(m, t.k || 0); }, 0);
+      [['Окачената фасада — монтирани панели до ниво 8 (по съобщенията от деня).', inP.slice(6, 13)], ['Етаж 5 — шпакловката е завършена; започва грундът.', inP.slice(13, 20)]].forEach(function (f) {
+        kk++;
+        D.tochki.push({ id: ++D.tid, den_id: k24.id, razdel: 4, grupa: 'fakt', tekst: f[0], istina: 'saobshteno', vajnost: 1, izvori: srcs(f[1]), red: kk, k: kk, v_dnevnika: true });
+        k24.zapis_md = String(k24.zapis_md).replace('\n\n## 5. ', '\n- ' + f[0] + ' ⟦' + kk + '⟧\n\n## 5. ');
+      });
+      // чакащо „➕“ на друг ден — листът „Одобряваш ли деня?“ на Скай 24.09 предупреждава за него [§3.1]
+      D.resheniq.push({ id: ++D.seq, den_id: k24.id, tochka_id: null, vid: 'dobavi', tekst: big[1].kluch, versiq: k24.versiq, hesh: k24.hesh, ustroistvo: 'iPhone · иконка',
+        kogda: T('2026-09-24T17:15:00+03:00'), obraboteno: null, rezultat: null });
+    }
+    // движението в Интранета (пише го само лаптопът) — Амур 6, Скай 2 [§2.1, §5.11]
+    function DV(id, o, tid, vid, staro, novo, op, a, b, x) {
+      return Object.assign({ id: id, tid: tid, obekt: o, vid: vid, staro: staro, novo: novo, opisanie: op, otgovornik: null, srok: null, status: null, data_sabitie: '2026-09-24', tochnost: 'prozorec',
+        okno_ot: T('2026-09-24T' + a + ':00+03:00'), okno_do: T('2026-09-24T' + b + ':00+03:00') }, x || {});
+    }
+    D.intranet_dvizhenie = [
+      DV(9001, 'ag', 7027, 'nova', null, null, 'Предай екзекутивите на ВиК за сграда 1', '08:02', '10:21', { tochnost: 'tochna', otgovornik: 'Инж. ВиК (демо)', srok: '2026-10-08', status: 'Текуща' }),
+      DV(9002, 'ag', 7010, 'status', 'Текуща', 'Стартирала', 'Прегледай количествената сметка за поредния акт по кофража', '12:03', '14:05'),
+      DV(9003, 'ag', 7001, 'srok', '2026-09-25', '2026-09-30', 'Изпрати на инвеститора графика за фасадата на сграда 4', '12:03', '14:05'),
+      DV(9004, 'ag', 7022, 'otgovornik', 'Техн. ръководител (демо)', 'Ти (демо)', 'Оглед на кофража с надзора — протокол', '14:05', '16:02'),
+      DV(9005, 'ag', 7021, 'zavarshena', 'Текуща', 'Завършена', 'Снимки на плоча +9,30 преди армировката', '14:05', '16:02'),
+      DV(9006, 'ag', 6950, 'izchezna', null, null, 'Стара задача: скелето по северната фасада на сграда 3', '14:05', '16:02'),
+      DV(9007, 'soft', 7013, 'srok', '2026-09-20', '2026-09-27', 'Заяви технически преглед на кулокран 2', '08:02', '10:21'),
+      DV(9008, 'soft', 7023, 'status', 'Текуща', 'За санкция', 'Проверка на хидроизолацията в сутерена', '12:03', '14:05')
+    ];
+    // списъкът на Интранета — по движението (сроковете, статусите, новата задача)
+    (D.intranet_zadachi || []).forEach(function (r) {
+      if (r.tid === 7001) r.srok = '2026-09-30';
+      if (r.tid === 7010) r.status = 'Стартирала';
+      if (r.tid === 7013) r.srok = '2026-09-27';
+      if (r.tid === 7021) { r.status = 'Завършена'; r.zavarshena = T('2026-09-24T15:30:00+03:00'); }
+      if (r.tid === 7027) r.sazdadena = T('2026-09-24T10:15:00+03:00');
+    });
+    // „✉ Питай по мейл“: едно „чака отговор“ (питано 15.09 → 9 дни, кехлибарено) и едно отговорено [§3.6]
+    function PZ(o) {
+      return Object.assign({ id: ++D.seq, den_id: null, tochka_id: null, vid: 'iskane', chovek: 'snab@primer.test', mqsto: null, srok: null, izvor: 'AiLab · Питай', status: 'chaka_otgovor', vanshen_id: null,
+        sazdadeno: null, obnoveno: null, obekt: 'ag', cel: null, danni: null, razqsnenie: null, zamenq: null, belejka: null, vanshen_url: null, klient_id: null, opit: null }, o);
+    }
+    D.deistviq.push(PZ({ tekst: 'Въпрос до snab@primer.test: Клинкерът за сграда 4 — има ли потвърдена дата на доставката?', sazdadeno: T('2026-09-15T10:05:00+03:00'), obnoveno: T('2026-09-16T09:02:00+03:00'),
+      belejka: 'питано по мейл 15.09 10:05', danni: { kanal: 'mail', adresati: [{ adres: 'snab@primer.test', ime: 'Demo Snab' }], tema: 'Въпрос: Клинкерът за сграда 4 — дата на доставката (Амур Гардънс, 15.09.2026)',
+        pitano: T('2026-09-15T10:05:00+03:00'), kluch: null, tochka_k: null } }));
+    D.deistviq.push(PZ({ status: 'izpalneno', tekst: 'Въпрос до snab@primer.test: Мострата на смесителите — кога пристига?', sazdadeno: T('2026-09-21T11:30:00+03:00'), obnoveno: T('2026-09-23T15:10:00+03:00'),
+      belejka: 'отговор: 23.09 15:10 от snab@primer.test („RE: Въпрос: Мострата на смесителите — кога пристига?“)', danni: { kanal: 'mail', adresati: [{ adres: 'snab@primer.test', ime: 'Demo Snab' }],
+        tema: 'Въпрос: Мострата на смесителите — кога пристига? (Амур Гардънс, 21.09.2026)', pitano: T('2026-09-21T11:30:00+03:00'), kluch: null, tochka_k: null,
+        otgovor: { kluch: null, den_id: null, vreme: T('2026-09-23T15:10:00+03:00') } } }));
+  }
+  // демо панел: лаптопът спи (−40 мин) · Тиймс от вчера 09:05 · без таблиците на Етап 6 (преди 009) [§5.11, §5.13 т.11, т.16]
+  function demoSvRefresh() { demoApi.svezhest().then(function (l) { S.svezhest = l || []; S.svAt = Date.now(); renderCurrent(); if (sheetKind === 'demo') openDemoSheet(); }, function () {}); }
+  function demoSpi(el) { D.spi = !D.spi; if (el) el.setAttribute('aria-pressed', String(D.spi)); demoSvRefresh(); toast(D.spi ? 'Демо: лаптопът спи от 17:02' : 'Демо: лаптопът е буден'); }
+  function demoTeamsV(el) { D.teamsV = !D.teamsV; if (el) el.setAttribute('aria-pressed', String(D.teamsV)); demoSvRefresh(); toast(D.teamsV ? 'Демо: Тиймс — последно вчера 09:05' : 'Демо: Тиймс пак е свеж'); }
+  function demoE6No(el) {
+    D.e6No = !D.e6No; IZ6 = {}; ADR = null; ADR_ST = '';
+    if (el) el.setAttribute('aria-pressed', String(D.e6No));
+    renderCurrent(); if (view === 'day') renderIzt();
+    toast(D.e6No ? 'Демо: таблиците на Етап 6 ги няма — както преди 009' : 'Демо: таблиците на Етап 6 пак има');
+    if (sheetKind === 'demo') openDemoSheet();
+  }
+  function demoE6Lbl(k) {
+    return k === 'spi' ? '💻 Лаптопът спи — ' + (D && D.spi ? 'вкл.' : 'изкл.') : k === 'tv' ? '+ Тиймс от вчера — ' + (D && D.teamsV ? 'вкл.' : 'изкл.')
+      : 'Без таблиците на Етап 6 — ' + (D && D.e6No ? 'вкл.' : 'изкл.');
   }
   // Присъствия: Амур 120 дни, Скай 95 (започва по-късно — [К20]); 3 делника без запис; 1 ден със стойност с часове;
   // нето = dni.hora, освен Амур 23.09 (49 ↔ 50) и Скай 24.09 (41 ↔ 38) — за „разлика“. dulga → ~1 300 реда (2 страници [К4]).
@@ -6304,8 +7568,10 @@
     var SPEC = [
       [SS.s1, { tema: 'Кофраж +9,30', tekst: 'Добро утро. Кофражът на плоча +9,30 в сграда 2 е затворен до ос 7. На плочата сме 10 кофражисти — двама са от вчерашната смяна и още не са въведени в Присъствия. Армировката започва утре от 07:00, ако кранът е свободен.' }],
       [SS.s2, { tema: 'Снимки +9,30', tekst: 'Снимки от плоча +9,30 — кофражът е готов за приемане. Ос 7 е последната за днес, остатъкът — утре сутринта.' }],
-      [SS.s4, { avtor: 'dostavchik@primer.test', tema: 'RE: Уточнение за доставката', do_kopie: 'Копие: pto@primer.test · tr@primer.test',
-        tekst: 'Здравейте,\n\nПоради забавяне при производителя остатъкът от арматурата Ø12/Ø16 (около 14 т) ще бъде доставен с 5 до 10 работни дни закъснение. Първата част можем да изпратим на 29.09.\n\nМоля да потвърдите дали приемате частична доставка.\n\nПоздрави,\nотдел „Доставки“' }],
+      // Етап 6 [§5.11]: „Копие:“ като истинските (a;b) — с адреса на „аз“ (не се предлага); цитираното писмо носи „Име <адрес>“
+      [SS.s4, { avtor: 'dostavchik@primer.test', tema: 'RE: Уточнение за доставката', do_kopie: 'Копие: snab@primer.test;office@primer.test;rp.demo@primer.test',
+        tekst: 'Здравейте,\n\nПоради забавяне при производителя остатъкът от арматурата Ø12/Ø16 (около 14 т) ще бъде доставен с 5 до 10 работни дни закъснение. Първата част можем да изпратим на 29.09.\n\nМоля да потвърдите дали приемате частична доставка.\n\nПоздрави,\nDemo Dostavchik\nотдел „Доставки“\n\n' +
+          '-----Original Message-----\nFrom: Demo Tehnik <demo.tehnik@primer.test>\nSent: Wednesday, September 23, 2026 4:20 PM\nTo: Demo Dostavchik <dostavchik@primer.test>\nSubject: Уточнение за доставката\n\nКога точно идва остатъкът от арматурата?' }],
       [SS.s5, { avtor: 'Demo Tehnik', otgovor: '↳ отговор на ТР на обекта (11:12)', izvor: 'чат на ПТО', izvor_vid: 'chat', tekst: 'Арматурата няма да дойде преди 01.10 — писмото от доставчика е във входящата поща. Предлагам да поръчаме частично от друг доставчик само за +9,30.' }],
       [SS.s6, { avtor: 'beton@primer.test', tema: 'Товарителници 24.09', tekst: 'Здравейте,\n\nИзпратени са 2 миксера C25/30 — общо 24 м³, в 09:10 и 10:05. Товарителниците са в прикачения файл.\n\nПоздрави', failove: [{ ime: 'Товарителници-демо.pdf', pat: 'Файлове/Товарителници-демо.pdf', url: 'demo:' }] }],
       [SS.s7, { tekst: 'Скелето по северната фасада на сграда 3 е демонтирано. Утре бригадата минава на сграда 4 — трябва ни място за палетите с клинкер.' }],
@@ -6475,6 +7741,7 @@
     var th = (/[?&]theme=(dark|light)(&|$)/.exec(QS) || [])[1];
     if (th) document.documentElement.setAttribute('data-theme', th);
     initSel(); migrateDayCache();
+    heldOrphans();   // Етап 6 [§5.6 т.9]: задържани отпреди > 10 мин (приложението е било убито насред „Отмени“) → тръгват
     setBodyO(TB.sel);
     WIDE = wideNow(); document.body.classList.toggle('wide', WIDE); twSync();   // широк екран — преди първото рисуване
     if (DEMO) { $('#demoPill').hidden = false; api = demoApi; demoInit(); routeStart(); return; }
