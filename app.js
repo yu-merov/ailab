@@ -1,3 +1,5 @@
+// AiLab · Стъпка 1а (tools\STAPKA1A-SPEC.md, ЧАСТ А) — „Събрано до …“, нова версия без загуба на отговорите, „↳ продължение“, закъснели,
+// приложенията, времето, мерене. Решение 1 на РП (19.10, „В“): черновата на днешния ден в 19:00 и обновяване в 22:45. Върху Етап 6:
 // AiLab · Етап 6 (tools\ETAP6-SPEC.md, ЧАСТ А) — „🗂️ Източниците на деня“, връзките между източниците, „✉ Питай по мейл“, 🚫 в Табло,
 // без чакане след действие (лентата „Отмени“), свежест по графика, „📄 Пълен запис“ = Word, „📥 Днес досега“. Върху Етап 5.2 (F11, §5.10).
 // AiLab · Етап 5 — Присъствия (графика 30 д / 90 д / Всичко, карта „👷 Присъствия“), Интранетът в „Задачи“, „📘/🚫“ и в
@@ -175,6 +177,7 @@
   var TEST_DO = '2001-01-01';   // тестовите дни на пробата (2000-01-01) не се показват
   var CLOSE_VID = { potvardi: 1, popravka: 1, osporva: 1, komentar: 1 };   // тези решения затварят точка „за решение“
   var ANSW = { potvardi: 1, popravka: 1, komentar: 1 };                     // „чака отговор“: точката има мой отговор (✓, поправка, разяснение)
+  var ANS4 = { potvardi: 1, popravka: 1, komentar: 1, osporva: 1 };         // 1а [§6.1]: отговорите, които важат за един текст на точката
   // Етап 6 [§5.1]: + k, v_dnevnika — за „🚫 Не включвай“ в Табло (zapis_md НЕ — тегли се отделно с tZap); без колоните → старата заявка
   var OPEN_SEL = 'id,den_id,razdel,tekst,istina,vajnost,izvori,red,k,v_dnevnika,dni!inner(obekt,data,status,versiq,hesh,obnoven),resheniq(id),deistviq(id,status)';
   var OPEN_SEL0 = 'id,den_id,razdel,tekst,istina,vajnost,izvori,red,dni!inner(obekt,data,status,versiq,hesh,obnoven),resheniq(id),deistviq(id,status)';
@@ -194,6 +197,12 @@
   // Етап 5 (008_etap5.sql): Интранетът — копие на „Моите задачи“ (без отпечатъците); адресът идва само от link [§3.3]
   var IZ_COLS = 'tid,opisanie,tema,obekt,otgovornik,vazlozhil,ekip,prioritet,srok,status,sazdadena,zavarshena,na_men,ot_men,v_ekipa,komentari,kontrolni,link,detajli_v,vidqna_posledno,obnoveno';
   var E4 = { act: true };   // false → колоните на Етап 4 ги няма (преди 005): заявките на задачите минават на старите [§2]
+  // Стъпка 1а (010_stapka1a.sql): без новите колони → тихо старите заявки (isNoCol), досегашното поведение [1а §6]
+  var E1A = { head: true, cnt: true, pris: true };
+  var HEAD0 = 'id,versiq,status,hesh,obnoven,vpisan_pat';
+  var DOK_COLS = 'id,kade,ime,razshirenie,status,prichina,kratko,vajen,podatel,tema,vreme,url';
+  var DOK_OT = DEMO ? '2026-09-01' : '2026-10-01';   // регистърът на приложенията — от еднократното прочитане [1а §6.8]
+  function isoMinus(ms) { return new Date(nowMs() - ms).toISOString(); }
   function actCols() { return ACT_COLS + (E4.act ? ACT_E4 : ''); }
   // 7а/7б със старите колони при 42703 (един път — после направо старите до следващото отваряне)
   function actQ(build) {
@@ -206,15 +215,27 @@
   var realApi = {
     dni: function () { return R(function () { return db.from('dni').select(DNI_COLS).eq('obekt', OBEKT_KOD).gte('data', TEST_DO).order('data', { ascending: false }).limit(60); }); },
     // „чакат“ за лентата: точките за решение/непроверени + моите потвърждения и поправки по тях (като на отворения ден)
+    // 1а [§6.1]: + tochki.obnovena_v и resheniq.versiq — отговор за стар текст пак „чака“; без колоните → старата заявка
     counts: function (ids) {
       if (!ids.length) return Promise.resolve({ t: [], r: [] });
+      var self = this, nov = E1A.cnt;
       return Promise.all([
-        R(function () { return db.from('tochki').select('id,den_id,grupa,istina').in('den_id', ids).in('grupa', ['reshenie', 'neprovereno']); }),
-        R(function () { return db.from('resheniq').select('den_id,tochka_id,vid').in('den_id', ids).in('vid', ['potvardi', 'popravka', 'komentar']).not('tochka_id', 'is', null); })
-      ]).then(function (rr) { return { t: rr[0] || [], r: rr[1] || [] }; });
+        R(function () { return db.from('tochki').select('id,den_id,grupa,istina' + (nov ? ',obnovena_v' : '')).in('den_id', ids).in('grupa', ['reshenie', 'neprovereno']); }),
+        R(function () { return db.from('resheniq').select('den_id,tochka_id,vid' + (nov ? ',versiq' : '')).in('den_id', ids).in('vid', ['potvardi', 'popravka', 'komentar']).not('tochka_id', 'is', null); })
+      ]).then(function (rr) { return { t: rr[0] || [], r: rr[1] || [] }; }, function (e) {
+        if (!nov || !isNoCol(e)) throw e;
+        E1A.cnt = false; return self.counts(ids);
+      });
     },
     den: function (id) { return R(function () { return db.from('dni').select('*').eq('id', id).maybeSingle(); }); },
-    head: function (id) { return R(function () { return db.from('dni').select('id,versiq,status,hesh,obnoven,vpisan_pat').eq('id', id).maybeSingle(); }); },
+    // 1а [§6.1]: + sabrano, promeni (новата версия казва какво е сменено, още преди презареждането)
+    head: function (id) {
+      if (!E1A.head) return R(function () { return db.from('dni').select(HEAD0).eq('id', id).maybeSingle(); });
+      return R(function () { return db.from('dni').select(HEAD0 + ',sabrano,promeni').eq('id', id).maybeSingle(); }).then(null, function (e) {
+        if (!isNoCol(e)) throw e;
+        E1A.head = false; return R(function () { return db.from('dni').select(HEAD0).eq('id', id).maybeSingle(); });
+      });
+    },
     tochki: function (id) { return R(function () { return db.from('tochki').select('*').eq('den_id', id).order('red', { ascending: true }).order('id', { ascending: true }); }); },
     istini: function (id) { return R(function () { return db.from('tochki').select('id,istina').eq('den_id', id); }); },
     res: function (id) { return R(function () { return db.from('resheniq').select('id,den_id,tochka_id,vid,tekst,versiq,hesh,kogda,obraboteno,rezultat').eq('den_id', id).order('kogda', { ascending: true }); }); },
@@ -312,7 +333,13 @@
     // Присъствия: числата на всички дни — страница rg (базата връща най-много 1000 реда) [К4]; obnoveno_ot не се тегли [К33]
     pris: function (rg) { return R(function () { return db.from('prisystvie').select('obekt,data,obshto,neto').eq('v_izvora', true).order('data', { ascending: true }).order('obekt', { ascending: true }).range(rg[0], rg[1]).abortSignal(tsig()); }); },
     // разбивката на един ден — само при показване/тап [§6.3]
-    prisDen: function (o, d) { return R(function () { return db.from('prisystvie').select('obekt,data,po_brigadi,obshto,neto,obnoveno_v').eq('obekt', o).eq('data', d).eq('v_izvora', true).limit(1).abortSignal(tsig()); }).then(function (r) { return Array.isArray(r) ? r[0] || null : r; }); },
+    // 1а [§6.1]: + sinhr (кога е дошъл в базата — „въведени след черновата“); без колоната → obnoveno_v
+    prisDen: function (o, d) {
+      function q(c) { return R(function () { return db.from('prisystvie').select(c).eq('obekt', o).eq('data', d).eq('v_izvora', true).limit(1).abortSignal(tsig()); }).then(function (r) { return Array.isArray(r) ? r[0] || null : r; }); }
+      var c0 = 'obekt,data,po_brigadi,obshto,neto,obnoveno_v';
+      if (!E1A.pris) return q(c0);
+      return q(c0 + ',sinhr').then(null, function (e) { if (!isNoCol(e)) throw e; E1A.pris = false; return q(c0); });
+    },
     // Интранетът: задачите в списъка на РП — страница rg [§6.4, К4]
     izad: function (rg) { return R(function () { return db.from('intranet_zadachi').select(IZ_COLS).eq('v_spisaka', true).order('tid', { ascending: true }).range(rg[0], rg[1]).abortSignal(tsig()); }); },
     // ---- Етап 6 (009_etap6.sql): само SELECT; без таблицата/изгледа → тихо „още не е в облака“ [ETAP6 §5.1] ----
@@ -324,8 +351,29 @@
       if (!ids.length) return Promise.resolve([]);
       return R(function () { return db.from('saobshteniq').select(SAOB_COLS).in('id', ids).order('vreme').order('id').limit(60).abortSignal(tsig()); });
     },
-    // F12 [§5.14]: съобщенията на днешния ден преди черновата — по (обект, дата), без den_id (2.7)
-    saobDnesK: function (o, data) { return R(function () { return db.from('saobshteniq').select('id,kluch,vid,vreme').eq('obekt', o).eq('data', data).is('den_id', null).order('vreme').order('id').limit(1000).abortSignal(tsig()); }); },
+    // F12 [§5.14]: съобщенията на днешния ден преди черновата — по (обект, дата), без den_id (2.7);
+    // 1а [§6.1]: днешният ден ВЕЧЕ има чернова (19:00) → всички съобщения на деня (-Dnes им дава den_id), без филтъра
+    saobDnesK: function (o, data, vse) { return R(function () { var q = db.from('saobshteniq').select('id,kluch,vid,vreme').eq('obekt', o).eq('data', data); if (!vse) q = q.is('den_id', null); return q.order('vreme').order('id').limit(1000).abortSignal(tsig()); }); },
+    // ---- Стъпка 1а (010_stapka1a.sql): само SELECT; без таблицата/колоните → тихо досегашното [1а §6.1] ----
+    // „След черновата е дошло“: съобщенията на (обект, ден), качени в базата след снимката „събрано до“
+    slednoBroi: function (o, data, ot) {
+      return R(function () { return db.from('saobshteniq').select('vid').eq('obekt', o).eq('data', data).gt('sazdadeno', ot).limit(500).abortSignal(tsig()); })
+        .then(function (rows) { var x = { teams: 0, mail: 0 }; (rows || []).forEach(function (r) { if (r.vid === 'mail') x.mail++; else if (r.vid === 'teams') x.teams++; }); return x; });
+    },
+    // регистърът на приложенията: на деня (лентата, листът) и всички от DOK_OT (Настройки › 📎 Приложенията)
+    dokDen: function (o, data) { return R(function () { return db.from('dokumenti').select(DOK_COLS).eq('obekt', o).eq('data', data).limit(300).abortSignal(tsig()); }); },
+    // броевете в Настройки — само obekt,status, по страници (allPages): регистърът расте ~15 файла на ден и минава 1000 до декември
+    dokVsichki: function (ot, rg) { return R(function () { return db.from('dokumenti').select('obekt,status').gte('data', ot).order('id').range(rg[0], rg[1]).abortSignal(tsig()); }); },
+    // листовете „Не може — защо“ / „Непрочетени“ — само редовете с тези статуси (не изрязък от всички), по страници
+    dokSt: function (ot, sts, rg) { return R(function () { return db.from('dokumenti').select(DOK_COLS + ',obekt,data').gte('data', ot).in('status', sts).order('data', { ascending: false }).order('id').range(rg[0], rg[1]).abortSignal(tsig()); }); },
+    // закъснелите за одобрен ден — в по-късните чернови на обекта (sabrano.zakasneli[ден]), до 21 дни напред [§4.4]
+    zakasneliZa: function (o, data) {
+      var d = parseD(data); d.setDate(d.getDate() + 21);
+      return R(function () { return db.from('dni').select('id,data,sabrano').eq('obekt', o).gt('data', data).lte('data', ymd(d)).limit(40).abortSignal(tsig()); });
+    },
+    // мерилото: минутите по екран и ръчните „извън AiLab“ за последните 8 дни; началото на седмицата — първият ред aktivno_*
+    vremeSedm: function (ot) { return R(function () { return db.from('metriki').select('vid,stoinost,kogda').or('vid.like.aktivno%,vid.like.izvan%').gte('kogda', ot).limit(2000).abortSignal(tsig()); }); },
+    merStart: function () { return R(function () { return db.from('metriki').select('kogda').like('vid', 'aktivno%').order('kogda', { ascending: true }).limit(1).abortSignal(tsig()); }); },
     // движението в Интранета за деня (пише го само лаптопът) [§2.1]
     dvizh: function (o, data) {
       return R(function () {
@@ -402,6 +450,7 @@
   // а текстът на точката влиза в него, за да не се губи за какво е ставало дума.
   function fkFix(tbl, row, e, tt) {
     if (!e || e.code !== '23503') return null;
+    if (tbl === 'resheniq' && row && row.vid === 'vrazka_ne') return null;   // 1а [§4.6]: махната точка → не се праща наново (flush го маха тихо)
     var m = ((e.details || '') + ' ' + (e.message || '')), r = Object.assign({}, row);
     if (r.tochka_id != null && !/den_id/.test(m)) {
       r.tochka_id = null;
@@ -495,7 +544,9 @@
           next();
         }, function (e) {
           if (isNet(e) || isAuth(e)) { if (isNet(e)) FL.net = true; fin(); return; }
-          if (it.tbl === 'metriki') dropQ(it.qid);
+          // 1а [§6]: мерилото и „✕ не е продължение“ — отказ преди 010 (23514) или махната точка (23503) → тихо вън от опашката
+          if (it.tbl === 'metriki' && e && e.code === '23514' && /^(aktivno|izvan)_/.test((it.row && it.row.vid) || '')) MER.off = true;
+          if (it.tbl === 'metriki' || (it.tbl === 'resheniq' && it.row && it.row.vid === 'vrazka_ne' && e && (e.code === '23514' || e.code === '23503'))) dropQ(it.qid);
           else {
             setQueue(queue().map(function (x) { return x.qid === it.qid ? Object.assign({}, x, { err: errBg(e), code: e.code || '' }) : x; }));
             bad++;
@@ -567,11 +618,14 @@
   }
   // „чакат“ на ден от лентата — същото правило като на отворения ден: точка за решение/непроверена, която не е
   // проверена и по която РП още не е потвърдил или поправил (и в базата, и в опашката).
+  // 1а [§6.1]: own = най-новата версия, за която съм отговорил (без колоната versiq — „безкрайно нова“, както досега);
+  // точка, обновена след отговора ми (obnovena_v > версията му), пак „чака“
   function countMap(c) {
     var own = {}, m = {};
-    ((c && c.r) || []).forEach(function (r) { if (r.tochka_id != null) own[r.tochka_id] = 1; });
-    liveQ().forEach(function (it) { if (it.tbl === 'resheniq' && it.row.tochka_id != null && ANSW[it.row.vid]) own[it.row.tochka_id] = 1; });
-    ((c && c.t) || []).forEach(function (t) { if (t.istina !== 'provereno' && !own[t.id]) m[t.den_id] = (m[t.den_id] || 0) + 1; });
+    function put(tid, v) { v = v == null ? 1e9 : +v; if (own[tid] == null || v > own[tid]) own[tid] = v; }
+    ((c && c.r) || []).forEach(function (r) { if (r.tochka_id != null) put(r.tochka_id, r.versiq); });
+    liveQ().forEach(function (it) { if (it.tbl === 'resheniq' && it.row.tochka_id != null && ANSW[it.row.vid]) put(it.row.tochka_id, it.row.versiq); });
+    ((c && c.t) || []).forEach(function (t) { if (t.istina !== 'provereno' && !(own[t.id] != null && own[t.id] >= (+t.obnovena_v || 0))) m[t.den_id] = (m[t.den_id] || 0) + 1; });
     return m;
   }
   function chIds() { return S.dni.filter(function (d) { return d.status === 'chernova'; }).map(function (d) { return d.id; }); }
@@ -602,7 +656,7 @@
       onLoadFail(e, keepId);
     });
   }
-  // explicit = РП натисна „Презареди“. Иначе нова версия на СЪЩИЯ ден не подменя показаното (напр. след връзка
+  // explicit = РП натисна „Покажи новата версия“. Иначе нова версия на СЪЩИЯ ден не подменя показаното (напр. след връзка
   // отново) — остава лентата „Има нова версия“, за да не се одобри неусетно друго от прегледаното.
   function loadDen(id, tok, explicit) {
     phLoad(id);   // С1 — успоредно, не се чака (и при нова версия / презареждане) [§4.1]
@@ -619,7 +673,8 @@
         if ($('#groups')) renderLive(); else renderDay();   // напр. връщане от „Карти“ — екранът на деня се рисува наново
         return;
       }
-      S.den = rr[0]; S.tochki = (rr[1] || []).map(normT); S.res = rr[2] || []; S.newVersiq = 0;
+      S.den = rr[0]; S.tochki = (rr[1] || []).map(normT); S.res = rr[2] || []; S.newVersiq = 0; S.newHead = null;
+      den1aLoad();   // 1а: „събрано до“ — след черновата, приложенията на деня, закъснелите (само SELECT, успоредно)
       if (!same) { S.openedAt = activeMs(); S.fullOpen = false; }
       // денят е от другия обект (напр. ръчно въведен адрес #den/<id>) → Ден минава на неговия обект; лентата идва с проверката
       if (S.den.obekt && S.den.obekt !== OBEKT_KOD && (S.den.obekt === 'ag' || S.den.obekt === 'soft')) {
@@ -678,7 +733,7 @@
     if (!S.den) return;
     var v = S.newVersiq;
     stamp('зареждам…');
-    loadDen(S.den.id, ++S.tok, true).then(function () { if (v) toast('Заредена е версия ' + v); }, function (e) { if (isNet(e)) setOffline(); else toast('Не се зареди: ' + errBg(e), 'bad'); });
+    loadDen(S.den.id, ++S.tok, true).then(function () { if (v) toast(viToast()); }, function (e) { if (isNet(e)) setOffline(); else toast('Не се зареди: ' + errBg(e), 'bad'); });
   }
 
   // ---------- проверка на всеки 20 с, докато денят е отворен ----------
@@ -708,7 +763,7 @@
       var bylo = {}; S.res.forEach(function (r) { bylo[r.id] = r.rezultat || ''; });
       var cakah = S.res.some(function (r) { return r.vid === 'odobri' && !r.rezultat; }) || liveQ().some(function (it) { return it.tbl === 'resheniq' && it.row.vid === 'odobri' && it.row.den_id === id; });
       var ostar = (rr[1] || []).some(function (r) { return r.vid === 'odobri' && /остаряла/i.test(r.rezultat || '') && !/остаряла/i.test(bylo[r.id] || ''); });
-      if (cakah && ostar) toast('Одобрението не е вписано — има нова версия. Презареди и одобри отново.', 'bad');
+      if (cakah && ostar) toast('Одобрението не е вписано — има нова версия. Покажи новата версия и одобри отново.', 'bad');
       S.res = rr[1] || [];
       var m = {}; (rr[2] || []).forEach(function (x) { m[x.id] = x.istina; });
       S.tochki.forEach(function (t) { if (m[t.id]) t.istina = m[t.id]; });
@@ -718,19 +773,26 @@
       S.deistviq = S.deistviq.filter(function (a) { return !(typeof a.id === 'number' && (a.den_id === id || seenA[a.id])) && !(a.klient_id && dayA.some(function (x) { return x.klient_id === a.klient_id; })); }).concat(dayA);
       S.svezhest = rr[3] || []; S.svAt = Date.now(); S.okAt = Date.now();
       prisMaybe();
+      den1aLoad(true);   // 1а: „след черновата е дошло“ — на всяка проверка (20 с), само за чернова със „събрано до“
       saveCache(); setOnline(); renderLive();
     }).catch(function (e) { if (isNet(e)) setOffline(); }).then(done, done);
   }
   function applyHead(h) {
     if (!h) return;
     var d = S.den, was = d.status;
+    if (h.versiq > d.versiq) S.newHead = h;   // 1а [§6.4]: какво носи новата версия (promeni, sabrano) — за единния текст
     if (h.versiq > d.versiq && S.newVersiq !== h.versiq) {
-      S.newVersiq = h.versiq; toast('Има нова версия (v ' + h.versiq + ')');
-      // отворен лист „Одобряваш ли…“ за старата версия → вече не предлага одобрение
-      if (sheetKind === 'approve') openNewVerSheet();
+      S.newVersiq = h.versiq; toast(nvTxt());
+      // отворен лист „Одобряваш ли…“ за старата версия → вече не предлага одобрение (листът за новата версия — същият текст)
+      if (sheetKind === 'approve' || sheetKind === 'sab') openNewVerSheet();
     }
     d.status = h.status; d.vpisan_pat = h.vpisan_pat;
-    if (h.versiq === d.versiq) d.hesh = h.hesh;
+    if (h.versiq === d.versiq) {
+      d.hesh = h.hesh;
+      // 1а: „събрано до“ се сменя и без нова версия (проверено — нищо ново); без колоните ключовете ги няма → нищо не се пипа
+      if (h.sabrano !== undefined) d.sabrano = h.sabrano;
+      if (h.promeni !== undefined) d.promeni = h.promeni;
+    }
     var row = findDni(d.id); if (row) { row.status = h.status; row.versiq = h.versiq; }
     if (was !== 'vpisana' && d.status === 'vpisana') toast('Вписан ✓ — записът е в OneDrive и на компютъра');
   }
@@ -749,13 +811,16 @@
   }
   // Моите записи по точка: ✓ (potvardi), поправки, разяснения (komentar) — от базата и от опашката; err = отказан запис.
   function mine(tid, q) {
-    var o = { ok: null, fix: [], kom: [], err: false, osp: false, dn: null, dnNe: null }, bad = false;   // dn: последното 📘/🚫 (true/false) или null
+    var o = { ok: null, fix: [], kom: [], err: false, osp: false, dn: null, dnNe: null, ans: false, ansV: -1 }, bad = false;   // dn: последното 📘/🚫 (true/false) или null
+    // 1а [§6.1]: ans/ansV — има ли мой ✓/✎/разяснение/оспорване и най-новата версия, за която е (за „отговор за стар текст“)
+    function ansAt(vid, v) { if (ANS4[vid]) { o.ans = true; o.ansV = Math.max(o.ansV, v == null ? 1e9 : +v); } }
     // 📘/🚫 [К1, К2]: състоянието = последният ПРИЛОЖЕН избор по kogda (S.res е по kogda); последно вкараният (по id),
     // който тригерът НЕ е приложил („денят е одобрен“, „точката я няма“, „по-късен избор“) → dnNe — вижда се в картата
     var dnL = null, dnLast = null;
     // tekst 'отговорено' = „✓ Отговорено“ на решение (Таблото / заключен ден) — различно от „✓ вярно“ [К20]
     S.res.forEach(function (r) {
       if (r.tochka_id !== tid) return;
+      ansAt(r.vid, r.versiq);
       if (r.vid === 'potvardi') o.ok = { at: r.kogda, pend: false, otg: r.tekst === 'отговорено' };
       if (r.vid === 'popravka') o.fix.push({ tekst: r.tekst, at: r.kogda, rez: r.rezultat, pend: false });
       if (r.vid === 'komentar') o.kom.push({ tekst: r.tekst, at: r.kogda, rez: r.rezultat, pend: false });
@@ -772,6 +837,7 @@
       if (it.tbl !== 'resheniq' || it.row.tochka_id !== tid) return;
       var pd = !isHeld(it);
       if (it.err) o.err = true;
+      else ansAt(it.row.vid, it.row.versiq);
       if (it.row.vid === 'potvardi' && !it.err) o.ok = { at: it.at, pend: pd, otg: it.row.tekst === 'отговорено' };
       if (it.row.vid === 'potvardi' && it.err) bad = true;
       if (it.row.vid === 'popravka') o.fix.push({ tekst: it.row.tekst, at: it.at, pend: pd, err: it.err || '' });
@@ -815,7 +881,15 @@
   function locked() { return !!S.den && apprState().k !== 'none'; }
   function okNoErr(l) { return l.some(function (f) { return !f.err; }); }
   // „чака отговор“ (лентата с дните, листът „Одобряваш ли…“): решение/непроверено без мой отговор — както досега [К25]
-  function handled(t) { var m = mine(t.id); return t.istina === 'provereno' || !!m.ok || okNoErr(m.fix) || okNoErr(m.kom); }
+  function handled(t) { if (mineStar(t)) return false; var m = mine(t.id); return t.istina === 'provereno' || !!m.ok || okNoErr(m.fix) || okNoErr(m.kom); }
+  // 1а [§4.2, §6.1]: мой отговор за СТАР текст — точката е обновена (obnovena_v) след версията на последния ми ✓/✎/разяснение/оспорване.
+  // Отговорът остава на точката (същият ред по k), но не важи за новия текст → пак „за преглед“, докато не дам нов (или 🚫).
+  // На одобрен/вписан ден — не (там вече няма какво да се потвърждава).
+  function mineStar(t, q) {
+    if (!t || t.obnovena_v == null || !S.den || locked()) return false;
+    var m = mine(t.id, q);
+    return m.ans && m.ansV < +t.obnovena_v;
+  }
   function openCount() { var g = groupsOf(); return g.reshenie.concat(g.neprovereno).filter(function (t) { return !handled(t); }).length; }
   // Задачите към точка (базата + опашката, без отказаните); отменените се връщат отделно — те вече не затварят точката [К11]
   function tasksOf(tid, q) {
@@ -832,7 +906,9 @@
   function pregledana(t, q) {
     q = q || queue();
     var m = mine(t.id, q);
-    if (m.ok || okNoErr(m.fix) || okNoErr(m.kom) || m.osp || (m.dn === false && t.grupa !== 'reshenie')) return true;
+    if (m.dn === false && t.grupa !== 'reshenie') return true;
+    if (mineStar(t, q)) return false;   // 1а: отговорът ми е за стар текст → пак за преглед (и задача не стига — текстът не е видян)
+    if (m.ok || okNoErr(m.fix) || okNoErr(m.kom) || m.osp) return true;
     if (tasksOf(t.id, q).some(function (a) { return a.status !== 'otmeneno'; })) return true;
     if (TB.closed[t.id] && !errOf(t.id, q)) return true;
     if (t.grupa !== 'reshenie' && S.den && vidOf(S.den.id, t.id)) return true;
@@ -861,16 +937,19 @@
     return RAZ_EMO[(t.razdel || 0) - 1] || '🏗️';
   }
   var ISTINA = { saobshteno: ['съобщено', 'p-neutral'], provereno: ['✅ проверено', 'p-ok'], osporeno: ['оспорено', 'p-bad'] };
-  var IZ = { teams: ['Тиймс', '💬'], poshta: ['Поща', '✉️'], prisystvia: ['Присъствия', '👷'], intranet: ['Интранет', '🗂️'], server: ['Сървър', '🗄️'], laptop: ['Лаптоп', '💻'] };
-  var IZ_RED = ['teams', 'poshta', 'prisystvia', 'intranet', 'server', 'laptop'];
+  // 1а [§4.7, §6.1]: + Приложения, C: и Чернова (пишат ги лаптопът/пазачът); те не застаряват по часа и не се броят в „N от M свежи“
+  var IZ = { teams: ['Тиймс', '💬'], poshta: ['Поща', '✉️'], prisystvia: ['Присъствия', '👷'], intranet: ['Интранет', '🗂️'], server: ['Сървър', '🗄️'], laptop: ['Лаптоп', '💻'],
+    prilojeniq: ['Приложения', '📎'], disk: ['C:', '💽'], chernova: ['Чернова', '📝'] };
+  var IZ_RED = ['teams', 'poshta', 'intranet', 'prisystvia', 'prilojeniq', 'laptop', 'disk', 'chernova', 'server'];
+  var SV_NEBROI = { disk: 1, chernova: 1, laptop: 1, prilojeniq: 1 };
   // Каналът на източник по истинските tip („Тиймс чат“, „Тиймс канал“, „Мейл“, „Протокол“, „Присъствия“, „Интранет“) [ETAP6 §5.3]:
-  // чат + канал = един канал (Тиймс); всичко друго — файл
+  // чат + канал = един канал (Тиймс); 1а [§4.5]: „Метео“ — времето (Open-Meteo, модел за града); всичко друго — файл
   function kanalOf(tip) {
     var s = String(tip || '').trim();
-    return /^тиймс/i.test(s) ? 'teams' : /^(мейл|поща)/i.test(s) ? 'mail' : /^интранет/i.test(s) ? 'intranet' : /^присъствия/i.test(s) ? 'pris' : 'file';
+    return /^тиймс/i.test(s) ? 'teams' : /^(мейл|поща)/i.test(s) ? 'mail' : /^интранет/i.test(s) ? 'intranet' : /^присъствия/i.test(s) ? 'pris' : /^метео/i.test(s) ? 'meteo' : 'file';
   }
-  var KANAL = { teams: ['💬', 'Тиймс'], mail: ['✉️', 'мейл'], intranet: ['🗂️', 'Интранет'], pris: ['👷', 'Присъствия'], file: ['📄', 'файл'] };
-  var KANAL_RED = ['teams', 'mail', 'intranet', 'pris', 'file'];
+  var KANAL = { teams: ['💬', 'Тиймс'], mail: ['✉️', 'мейл'], intranet: ['🗂️', 'Интранет'], pris: ['👷', 'Присъствия'], meteo: ['🌡️', 'времето'], file: ['📄', 'файл'] };
+  var KANAL_RED = ['teams', 'mail', 'intranet', 'pris', 'meteo', 'file'];
   function tipEmo(tip) { return KANAL[kanalOf(tip)][0]; }
   // различните канали на източниците, в реда Тиймс, мейл, Интранет, Присъствия, файл
   function kanali(izv) { var m = {}; (izv || []).forEach(function (s) { m[kanalOf(s && s.tip)] = 1; }); return KANAL_RED.filter(function (k) { return m[k]; }); }
@@ -915,19 +994,19 @@
       screen.innerHTML = scrHead('day') + '<div class="pv3">' +
         '<aside class="pv3-d" aria-label="Дни"><div class="dl-h">' + och + '<span id="redDni">' + redChip('dni') + '</span></div>' +
           '<div class="dl" id="strip" role="tablist" aria-label="Дни" aria-orientation="vertical"></div>' + leg + '</aside>' +
-        '<div class="pv3-m"><div id="fresh"></div><section id="sum"></section><section id="pris" class="pris-w"></section><div id="groups" class="groups"></div>' +
+        '<div class="pv3-m"><div id="fresh"></div><section id="sum"></section><section id="pris" class="pris-w"></section><div id="verInfo"></div><div id="groups" class="groups"></div>' +
           '<section id="full"></section><section id="izt" class="izt-w" aria-label="Източниците на деня"></section><div id="appr"></div><div id="apprNx"></div><section id="acts" class="actsec"></section></div>' +
         '<aside class="pv3-p" id="pan" aria-label="Избрана точка"><div id="panT"></div><section id="ph" class="phs-w" aria-label="Всички снимки на деня"></section></aside></div>';
     } else {
       screen.innerHTML = scrHead('day') +
         '<section class="strip-w"><div class="strip-h">' + och + '<span class="strip-r"><span class="small muted">' + esc(monthLbl()) + '</span><span id="redDni">' + redChip('dni') + '</span></span></div>' +
         '<div class="strip" id="strip" role="tablist" aria-label="Дни"></div>' + leg + '</section>' +
-        '<div id="fresh"></div><section id="sum"></section><section id="pris" class="pris-w"></section><div id="groups" class="groups"></div>' +
+        '<div id="fresh"></div><section id="sum"></section><section id="pris" class="pris-w"></section><div id="verInfo"></div><div id="groups" class="groups"></div>' +
         '<section id="ph" class="phs-w" aria-label="Всички снимки на деня"></section><section id="full"></section>' +
         '<section id="izt" class="izt-w" aria-label="Източниците на деня"></section>' +
         '<div id="appr"></div><div id="apprNx"></div><section id="acts" class="actsec"></section>';
     }
-    renderStrip(); renderFresh(); renderSum(); renderPris(); renderGroups(); renderPh(); renderFull(); renderIzt(); renderAppr(); renderActs(); renderBanners();
+    renderStrip(); renderFresh(); renderSum(); renderPris(); renderVerInfo(); renderGroups(); renderPh(); renderFull(); renderIzt(); renderAppr(); renderActs(); renderBanners();
     if (WIDE) renderPan(true);
     centerStrip();
     if (S.flash && S.den && S.flash.den === S.den.id) setTimeout(flashPoint, 80);   // от Таблото: точката светва
@@ -954,7 +1033,7 @@
     renderStrip(); renderFresh(); renderAppr(); renderActs(); renderBanners();
     var sig = sigOf(), ch = sig !== S.sig;
     // картата „👷 Присъствия“ и „Пълен запис“ (📘/🚫 от другото устройство) — box() пише само разликата
-    keepAnchor(function () { if (ch) { renderSum(); renderGroups(); } renderPris(); if (ch) renderFull(); renderIzt(); });
+    keepAnchor(function () { if (ch) { renderSum(); renderGroups(); } renderPris(); renderVerInfo(); if (ch) renderFull(); renderIzt(); });
     keepY(['#ph'], renderPh);   // снимките: box() пише само при промяна (напр. покритие ⇄ без покритие)
     if (WIDE) renderPan();
   }
@@ -985,7 +1064,7 @@
   function renderEmpty() {
     screen.innerHTML = scrHead('day') +
       '<section class="empty"><div class="empty-e" aria-hidden="true">🌙</div><h1>Още няма чернови</h1>' +
-      '<p>За ' + esc(OBEKT[OBEKT_KOD][0]) + ' в облака още няма качен ден. Лаптопът качва черновата вечер (около 17:30) — тогава тя се появява тук с резюмето, точките за решение и бутона „Одобрявам“.</p>' +
+      '<p>За ' + esc(OBEKT[OBEKT_KOD][0]) + ' в облака още няма качен ден. Лаптопът пише черновата на деня в 19:00 и я обновява в 22:45 — тогава тя се появява тук с резюмето, точките за решение и бутона „Одобрявам“.</p>' +
       '<p class="small muted">Задачите (бутонът „+“) работят и сега — не чакат черновата.</p></section>' +
       '<div id="fresh"></div><section id="acts" class="actsec"></section>';
     renderFresh(); renderActs(); renderBanners();
@@ -1062,9 +1141,14 @@
   function svWarn(s, sp) { return sp.spi ? s.izvor !== 'laptop' && svOld(s, sp.T) : svOld(s); }
   function sortSv(list) { return (list || []).slice().sort(function (a, b) { var i = IZ_RED.indexOf(a.izvor), j = IZ_RED.indexOf(b.izvor); return (i < 0 ? 99 : i) - (j < 0 ? 99 : j); }); }
   // sel — контейнерът (Ден: #fresh, Табло: #tb-fresh); compact — 1 ред, по име само застарелите [К3, К17]
+  // 1а [§4.7]: свободното място на C: — кехлибарено под 15 GB, червено под 8 GB (без значение колко е стар редът)
+  function diskLvl(s) { var g = s ? +s.broi : NaN; return !s || s.broi == null || isNaN(g) ? 0 : g < 8 ? 2 : g < 15 ? 1 : 0; }
+  function diskHtml(s) { var l = diskLvl(s); return l ? '<span class="fr-disk' + (l > 1 ? ' bad' : '') + '">💽 C: ' + esc(Math.floor(+s.broi)) + ' GB ⚠️</span>' : ''; }
   function renderFresh(sel, compact) {
     var el = box(sel || '#fresh'); if (!el) return;
-    var list = sortSv(S.svezhest);
+    if (!sel && view === 'day' && sabOn()) { renderSab(el); return; }   // 1а [§6.2]: чернова със „събрано до“ → лентата „📥 Събрано до …“
+    // 1а [§6.7]: C:, Чернова, Лаптоп и Приложения не се броят в „N от M свежи“; C: — само при < 15 GB
+    var all = sortSv(S.svezhest), list = all.filter(function (s) { return !SV_NEBROI[s.izvor]; }), dk = diskHtml(svOf('disk'));
     if (!list.length) { el.innerHTML = '<button type="button" class="fresh warn" data-a="fresh">⚠️ Свежест: лаптопът още не е пратил данни за източниците</button>'; return; }
     var sp = svSpi();
     if (sp.spi) {
@@ -1073,11 +1157,11 @@
       var oh = old0.map(function (s) { return esc(IZ[s.izvor] ? IZ[s.izvor][0] : s.izvor) + ' ⚠️ ' + esc(rel(s.posledno)); });
       if (compact) {
         el.innerHTML = '<button type="button" class="fresh one sleep" data-a="fresh" aria-label="Свежест на източниците — подробно"><span class="fr-l">' + esc(spiTxt(sp)) +
-          (oh.length ? ' · <span class="fr-old">' + oh.join(' · ') + '</span>' : '') + '</span><span class="fr-go" aria-hidden="true">›</span></button>';
+          (oh.length ? ' · <span class="fr-old">' + oh.join(' · ') + '</span>' : '') + (dk ? ' · ' + dk : '') + '</span><span class="fr-go" aria-hidden="true">›</span></button>';
         return;
       }
       el.innerHTML = '<button type="button" class="fresh sleep" data-a="fresh" aria-label="Свежест на източниците — подробно"><span class="fr-u">' + esc(spiTxt(sp)) + '</span>' +
-        old0.map(function (s, i) { return '<span class="fr old">' + oh[i].replace(' ⚠️ ', ' ⚠️ <span class="mono">') + '</span></span>'; }).join('') + '</button>';
+        old0.map(function (s, i) { return '<span class="fr old">' + oh[i].replace(' ⚠️ ', ' ⚠️ <span class="mono">') + '</span></span>'; }).join('') + (dk ? '<span class="fr">' + dk + '</span>' : '') + '</button>';
       return;
     }
     var okT = list.filter(fresh).map(function (s) { return Date.parse(s.posledno); });
@@ -1086,7 +1170,7 @@
       var txt = !old.length ? '✓ Всички ' + list.length + ' източника свежи · до ' + esc(rel(Math.max.apply(null, okT))) :
         (okT.length ? '✓ ' : '⚠️ ') + okT.length + ' от ' + list.length + ' свежи · <span class="fr-old">' +
         old.map(function (s) { return esc(IZ[s.izvor] ? IZ[s.izvor][0] : s.izvor) + ' ⚠️ ' + esc(rel(s.posledno)); }).join(' · ') + '</span>';
-      el.innerHTML = '<button type="button" class="fresh one" data-a="fresh" aria-label="Свежест на източниците — подробно"><span class="fr-l">' + txt + '</span><span class="fr-go" aria-hidden="true">›</span></button>';
+      el.innerHTML = '<button type="button" class="fresh one" data-a="fresh" aria-label="Свежест на източниците — подробно"><span class="fr-l">' + txt + (dk ? ' · ' + dk : '') + '</span><span class="fr-go" aria-hidden="true">›</span></button>';
       return;
     }
     el.innerHTML = '<button type="button" class="fresh" data-a="fresh" aria-label="Свежест на източниците — подробно">' +
@@ -1094,7 +1178,7 @@
       list.map(function (s) {
         var f = fresh(s), nm = IZ[s.izvor] ? IZ[s.izvor][0] : s.izvor;
         return '<span class="fr ' + (f ? 'ok' : 'old') + '">' + esc(nm) + ' ' + (f ? '✓' : '⚠️') + ' <span class="mono">' + esc(rel(s.posledno)) + '</span></span>';
-      }).join('') + '</button>';
+      }).join('') + (dk ? '<span class="fr">' + dk + '</span>' : '') + '</button>';
   }
   function stPill() {
     var a = apprState();
@@ -1201,8 +1285,10 @@
     var vd0 = vDn(t, q), dnB = (lk || dnBezRed(t)) ? dnBtn(t, vd0, lk) : (vd0 ? '' : '<span class="pill p-izk">🚫 няма да влезе в дневника</span>'), wsel = WIDE && view === 'day';
     var head = rv ? '<button type="button" class="rev-r on" data-a="revCard" data-tid="' + tid + '" aria-expanded="true"><span class="rev-i" aria-hidden="true">' + revInfo(t, q).ico + '</span>' +
       '<span class="rev-t">' + esc(revInfo(t, q).st) + '</span><span class="chev" aria-hidden="true">▴</span></button>' : '';
-    var b1;
-    if (res) b1 = '<button type="button" class="pa pa-ok" data-a="ok" data-tid="' + tid + '"' + (m.ok ? ' disabled aria-pressed="true"' : '') + '>' + (m.ok ? '✓ отговорено' : '✓ Отговорено') + '</button>';
+    var b1, star = mineStar(t, q);
+    // 1а [§6.4]: отговорът ми е за стар текст → „✓ Още е вярно“ (нов ✓ за показаната версия)
+    if (star) b1 = '<button type="button" class="pa pa-ok pa-star" data-a="okStar" data-tid="' + tid + '">✓ Още е вярно</button>';
+    else if (res) b1 = '<button type="button" class="pa pa-ok" data-a="ok" data-tid="' + tid + '"' + (m.ok ? ' disabled aria-pressed="true"' : '') + '>' + (m.ok ? '✓ отговорено' : '✓ Отговорено') + '</button>';
     else if (!lk && t.istina !== 'provereno') b1 = '<button type="button" class="pa pa-ok" data-a="ok" data-tid="' + tid + '"' + (m.ok ? ' disabled aria-pressed="true"' : '') + '>' + (m.ok ? '✓ вярно' : '✓ Вярно') + '</button>';
     else { var vd = S.den && vidOf(S.den.id, t.id); b1 = '<button type="button" class="pa pa-ok" data-a="seen" data-tid="' + tid + '"' + (vd ? ' disabled aria-pressed="true"' : '') + '>' + (vd ? '✓ видях' : '✓ Видях') + '</button>'; }
     // широк екран: клик върху картата (не върху бутон) → панелът „Избрана точка“ [§6.2]
@@ -1211,6 +1297,7 @@
       (wp ? '<div class="pc-w"><span class="pill ' + wp[1] + '">' + wp[0] + '</span>' + (err ? '<button type="button" class="pill p-warn pc-errb" data-a="qerr">⚠️ не се записа — виж</button>' : '') + '</div>'
         : err ? '<div class="pc-w"><button type="button" class="pill p-warn pc-errb" data-a="qerr">⚠️ не се записа — виж</button></div>' : '') +
       '<div class="pc-b"><span class="pc-e" aria-hidden="true">' + emoT(t) + '</span><p class="pc-t">' + esc(t.tekst) + '</p></div>' +
+      wasHtml(t, m) + prdHtml(t, q) +   // 1а: „беше: …“ (обновена точка с мой отговор) · „↳ продължение на …“
       (ph && ph.length ? phRowHtml(ph, 'pcPh', 'data-tid="' + tid + '"') : '') +
       m.fix.map(function (f) {
         return '<div class="pc-fix"><b>✎ Твоята поправка:</b> ' + esc(f.tekst) + '<span class="pc-fs">' + (f.err ? '⚠️ не се записа — виж лентата горе' : f.pend ? '⏳ чака връзка' : '⏳ ' + esc(f.rez || 'чака Claude')) + '</span></div>';
@@ -1223,9 +1310,10 @@
         var v = vidIme(a) || ['📌', 'Задача'], s = stOf(a);
         return '<button type="button" class="pc-task" data-a="zad" data-id="' + esc(a.id) + '"><span aria-hidden="true">' + v[0] + '</span> <span class="pc-tt">' + esc(v[1]) + ': ' + esc(clip(a.tekst, 80)) + '</span> <span class="pill ' + s[1] + '">' + esc(s[0]) + '</span></button>';
       }).join('') +
-      '<div class="pc-m"><span class="pill ' + ist[1] + '">' + ist[0] + '</span>' +
+      '<div class="pc-m">' + verPills(t) + '<span class="pill ' + ist[1] + '">' + ist[0] + '</span>' +
         (hot ? '<span class="pill p-bad">⚠️ важно</span>' : '') +
-        (m.ok ? '<span class="pill p-mine">' + (m.ok.pend ? (m.ok.otg ? '⏳ отговорът чака връзка' : '⏳ потвърждение чака връзка') : (m.ok.otg ? '✓ отговорено от теб' : '✓ вярно от теб')) + '</span>' : '') + dnB + (m.dnNe && dnMozhe(t) ? dnNeHtml(m.dnNe) : '') +
+        (star ? '<span class="pill p-warn">✓ беше за v' + esc(m.ansV) + ' — още ли е вярно?</span>'
+          : m.ok ? '<span class="pill p-mine">' + (m.ok.pend ? (m.ok.otg ? '⏳ отговорът чака връзка' : '⏳ потвърждение чака връзка') : (m.ok.otg ? '✓ отговорено от теб' : '✓ вярно от теб')) + '</span>' : '') + dnB + (m.dnNe && dnMozhe(t) ? dnNeHtml(m.dnNe) : '') +
         izPillsHtml(t) + prisPillHtml(t) +
         (izv.length ? srcBtn(izv, t.id, 'src', 'pc') : '<span class="pill p-warn">няма източник</span>') +
       '</div></div>' +
@@ -1556,17 +1644,18 @@
     if (nx) nx.innerHTML = '';
     el.className = 'appr-w' + (a.k === 'none' ? ' sticky' : '');
     if (S.newVersiq > d.versiq) {
+      // 1а [§6.4]: един текст навсякъде — „🔄 Дойде по-нова версия … — отговорите ти са запазени“
       el.className = 'appr-w sticky';
-      el.innerHTML = '<div class="appr newv"><div class="appr-row"><span class="appr-big">Има нова версия (v ' + esc(S.newVersiq) + ')</span></div>' +
-        '<div class="small">Одобрява се само показаната версия — презареди, за да видиш промените.</div>' +
-        '<button type="button" class="btn big" data-a="reload">Презареди</button></div>';
+      el.innerHTML = '<div class="appr newv"><div class="appr-row"><span class="appr-big nv-t">' + esc(nvTxt()) + '</span></div>' +
+        '<div class="small">' + esc(NV_MALKO) + '</div>' +
+        '<button type="button" class="btn big" data-a="reload">Покажи новата версия</button></div>';
       return;
     }
     if (a.k === 'vpisana') {
       var f = String(d.vpisan_pat || '').split(/[\\/]/).pop();
       el.innerHTML = '<div class="appr vp"><div class="appr-row"><span class="appr-big">Вписан ✓</span><span class="pill p-ok">v' + esc(d.versiq) + '</span></div>' +
         '<ol class="steps"><li class="ok">✓ Одобрено</li><li class="ok">✓ Лаптопът</li><li class="ok">✓ Вписан</li></ol>' +
-        '<div class="small muted">' + (f ? '📄 ' + esc(f) + ' · OneDrive и копие на компютъра' : 'Записът е в OneDrive и на компютъра.') + '</div></div>';
+        '<div class="small muted">' + (f ? '📄 ' + esc(f) + ' · OneDrive и копие на компютъра' : 'Записът е в OneDrive и на компютъра.') + '</div>' + zakLine(d) + '</div>';
       return;
     }
     if (a.k === 'pending' || a.k === 'queued') {
@@ -1576,7 +1665,7 @@
         '<ol class="steps"><li class="' + (q ? 'wait' : 'ok') + '">' + (q ? '⏳ Изпращане' : '✓ Одобрено') + '</li><li class="' + (q ? '' : 'wait') + '">Лаптопът</li><li>Вписан</li></ol>' +
         (/^конфликт/i.test(a.rez || '') ? '<p class="warnline">⚠️ Лаптопът не може да впише деня: ' + esc(String(a.rez).replace(/^конфликт:\s*/i, '')) + '</p>' : '') +
         '<div class="small muted">' + (q ? 'Одобрението е запазено на телефона и тръгва само, щом има покритие.' : 'Лаптопът пише .md и Word в OneDrive, щом е включен. Проверявам на ' + Math.round(POLL_MS / 1000) + ' с.') + '</div>' +
-        nextBtn() + '</div>';
+        zakLine(d) + nextBtn() + '</div>';
       return;
     }
     // Един ред под палеца [К24]: „Следващ › · N“ вляво, „Одобрявам vN“ вдясно; когато няма непрегледани — „✓ Прегледа всичко“,
@@ -1616,38 +1705,618 @@
   function openApprove() {
     var d = S.den; if (!d) return;
     commitUndos();   // чакащ 🚫 (2 с „Отмени“) влиза в опашката ПРЕДИ одобрението — опашката е по ред [К2]
-    var left = openCount(), ch = zapisChist(d.zapis_md || ''), nDob = dobaviCakat(d.id);
-    openSheet('Одобряваш ли деня?',
-      '<div class="ap-sum"><span class="ap-d">' + esc(dayTitle(d.data)) + '</span><span class="ap-v">версия ' + esc(d.versiq) + '</span></div>' +
-      '<p>Лаптопът ще впише <b>точно тази версия</b>: запис .md и Word в OneDrive + копие на компютъра.</p>' +
-      // „➕ Включи в дневника“, които още чакат сутрешния пуск — одобрението сега ги изпуска [ETAP6 §3.1]
-      (nDob ? '<p class="warnline">➕ ' + nDob + ' ' + pl(nDob, 'съобщение чака да влезе', 'съобщения чакат да влязат') + ' — сутрешният пуск (09:00) ' + pl(nDob, 'го добавя', 'ги добавя') + ' като нова версия на този ден. Ако одобриш сега, няма да ' + pl(nDob, 'влезе', 'влязат') + '.</p>' : '') +
-      (left ? '<p class="warnline">⏳ ' + left + (left === 1 ? ' точка е' : ' точки са') + ' без твой отговор — влизат в записа със статуса си („съобщено“, „оспорено“).</p>' : '') +
+    var left = openCount(), ch = zapisChist(d.zapis_md || ''), nDob = dobaviCakat(d.id), sb = sabOf(d);
+    var head = '<div class="ap-sum"><span class="ap-d">' + esc(dayTitle(d.data)) + '</span><span class="ap-v">версия ' + esc(d.versiq) + '</span></div>' +
+      '<p>Лаптопът ще впише <b>точно тази версия</b>: запис .md и Word в OneDrive + копие на компютъра.</p>';
+    // „без твой отговор“ брои и точките с отговор за стар текст (1а [§6.1])
+    var mid = (left ? '<p class="warnline">⏳ ' + left + (left === 1 ? ' точка е' : ' точки са') + ' без твой отговор — влизат в записа със статуса си („съобщено“, „оспорено“).</p>' : '') +
       (ch.skriti ? '<p class="small">🚫 ' + ch.skriti + (ch.skriti === 1 ? ' ред не влиза' : ' реда не влизат') + ' в дневника (точки „не за дневника“).</p>' : '') +
-      prisApprLine(d) +
-      '<button type="button" class="btn big" data-a="approveGo">' + (nDob ? 'Одобри без тях' : 'Одобрявам v ' + esc(d.versiq)) + '</button>' +
-      '<button type="button" class="btn ghost" data-a="close">Още не</button>', 'approve');
+      (sb && d.status === 'chernova' && !(prisOk() && prisOf(d.obekt || OBEKT_KOD, d.data)) ? '' : prisApprLine(d));   // 1а: „няма запис“ вече е горе в липсите
+    if (!sb || d.status !== 'chernova') {
+      // ден без „събрано до“ (качен преди Стъпка 1а) — досегашният лист с един бутон
+      openSheet('Одобряваш ли деня?', head +
+        // „➕ Включи в дневника“, които още чакат следващата версия — одобрението сега ги изпуска [ETAP6 §3.1]
+        (nDob ? '<p class="warnline">➕ ' + nDob + ' ' + pl(nDob, 'съобщение чака да влезе', 'съобщения чакат да влязат') + ' — следващата версия ' + pl(nDob, 'го добавя', 'ги добавя') + ' в този ден. Ако одобриш сега, няма да ' + pl(nDob, 'влезе', 'влязат') + '.</p>' : '') +
+        mid +
+        '<button type="button" class="btn big" data-a="approveGo">' + (nDob ? 'Одобри без тях' : 'Одобрявам v ' + esc(d.versiq)) + '</button>' +
+        '<button type="button" class="btn ghost" data-a="close">Още не</button>', 'approve');
+      return;
+    }
+    // 1а [§6.3, §4.3, §4.9]: „Събрано до …“ горе (свито), липсите, отговорите за стар текст, ненанесените поправки, трите бутона
+    var L = lipsi(d), nd = nextPisana(d), dd = dvDat(d.data, true), kg = slednaV(d), st = starPts(), fx = fixCakat(d), full = !L.length;
+    var fxT = fx ? '✎ ' + fx + ' ' + pl(fx, 'твоя поправка още не е', 'твои поправки още не са') + ' в текста — ' +
+      (full ? pl(fx, 'влиза', 'влизат') + ' в черновата на ' + nd + ' като „Поправка към записа за ' + dd + '“.'
+        : 'с „Одобри и добави …“ ' + pl(fx, 'влиза', 'влизат') + ' в черновата на ' + nd + ' като „Поправка към записа за ' + dd + '“; с „Одобри така“ ' + pl(fx, 'остава', 'остават') + ' само като урок.') : '';
+    var btns = full
+      ? '<button type="button" class="btn big" data-a="approveGo" data-t="dobavi">Одобрявам v' + esc(d.versiq) + '</button>' +
+        '<button type="button" class="btn ghost" data-a="close">Още не</button>'
+      : '<div class="ap-bt"><button type="button" class="btn big" data-a="approveGo" data-t="dobavi">Одобри и добави късните в ' + esc(nd) + '</button>' +
+          '<p class="small muted">Вписва се сега. Каквото дойде после за ' + esc(dd) + ' (Присъствия, късни съобщения, приложения) и твоите ненанесени поправки влизат в черновата на ' + esc(nd) + ' като „Закъснели за ' + esc(dd) + '“.</p></div>' +
+        '<div class="ap-bt"><button type="button" class="btn ghost" data-a="approveGo" data-t="taka">Одобри така</button>' +
+          '<p class="small muted">Вписва се сега. Каквото дойде после, остава само в AiLab.</p></div>' +
+        '<div class="ap-bt"><button type="button" class="btn ghost" data-a="apWait">Изчакай</button>' +
+          '<p class="small muted">Нищо не се записва. Следващата версия (' + esc(kg) + ') добавя липсващото и пази отговорите ти.</p></div>';
+    openSheet('Одобряваш ли деня?', head + sabApTop(d, L) +
+      (nDob ? '<p class="warnline">➕ ' + nDob + ' ' + pl(nDob, 'съобщение чака', 'съобщения чакат') + ' — ако одобриш с „' + (full ? 'Одобрявам' : 'Одобри и добави …') + '“, ' + pl(nDob, 'влиза', 'влизат') + ' в черновата на ' + esc(nd) + ' като закъснели.</p>' : '') +
+      mid +
+      (st.length ? '<button type="button" class="ap-li" data-a="starGo">🔄 ' + st.length + ' ' + pl(st.length, 'точка е сменена', 'точки са сменени') + ' след твоя отговор ›</button>' : '') +
+      (fxT ? '<p class="warnline calm">' + esc(fxT) + '</p>' : '') + btns, 'approve');
   }
   // Докато листът „Одобряваш ли…“ е отворен, лаптопът качи нова версия → листът вече не предлага одобрение.
+  // 1а [§6.4]: същият текст като горната лента и тоста
   function openNewVerSheet() {
-    openSheet('Има нова версия',
+    openSheet('Дойде по-нова версия',
       '<div class="ap-sum newv"><span class="ap-d">' + esc(dayTitle(S.den.data)) + '</span><span class="ap-v">v ' + esc(S.den.versiq) + ' → v ' + esc(S.newVersiq) + '</span></div>' +
-      '<p>Докато гледаше, лаптопът качи <b>версия ' + esc(S.newVersiq) + '</b>. Одобрява се само показаната версия — презареди, виж промените и тогава одобри.</p>' +
-      '<button type="button" class="btn big" data-a="reload">Презареди</button>' +
+      '<p class="nv-t"><b>' + esc(nvTxt()) + '</b></p><p class="small muted">' + esc(NV_MALKO) + '</p>' +
+      '<button type="button" class="btn big" data-a="reload">Покажи новата версия</button>' +
       '<button type="button" class="btn ghost" data-a="close">Затвори</button>', 'newv');
   }
+  // 1а [§4.3]: tekst — 'добави утре' (основният / „Одобрявам vN“ при пълно) · 'така' · без tekst — ден отпреди Стъпка 1а
   function doApprove(btn) {
     var d = S.den; if (!d) return;
     commitUndos();   // [К2] — и тук: изборите преди одобрението
-    if (newPending()) { closeSheet(); toast('Има нова версия — презареди и одобри нея.', 'bad'); renderAppr(); return; }
-    btn.disabled = true;
+    if (newPending()) { closeSheet(); toast('Има нова версия — покажи я и одобри нея.', 'bad'); renderAppr(); return; }
+    var tk = btn.getAttribute('data-t'), row = { den_id: d.id, vid: 'odobri', versiq: d.versiq, hesh: d.hesh || null, ustroistvo: device() };
+    if (tk === 'dobavi') row.tekst = 'добави утре'; else if (tk === 'taka') row.tekst = 'така';
+    var bs = sheetEl ? sheetEl.querySelectorAll('[data-a="approveGo"],[data-a="apWait"]') : [btn];
+    Array.prototype.forEach.call(bs, function (b) { b.disabled = true; });
     var sec = Math.max(1, Math.round((activeMs() - S.openedAt) / 1000));
-    send('resheniq', { den_id: d.id, vid: 'odobri', versiq: d.versiq, hesh: d.hesh || null, ustroistvo: device() }).then(function (r) {
+    send('resheniq', row).then(function (r) {
       send('metriki', { vid: 'odobrenie_sek', stoinost: sec, den_id: d.id }).catch(function () {});
       closeSheet();
       toast(r === 'sent' ? 'Одобрено ' + hhmm() + ' · чака лаптопа' : 'Одобрено · ⏳ чака връзка');
       renderAppr(); renderStrip(); renderGroups(); renderSum(); renderBanners(); renderTabs();   // значката на „Ден“ — веднага
-    }, function (e) { btn.disabled = false; toast('Не се записа: ' + errBg(e), 'bad'); });
+    }, function (e) { Array.prototype.forEach.call(bs, function (b) { b.disabled = false; }); toast('Не се записа: ' + errBg(e), 'bad'); });
+  }
+
+  // ======================================================================================================================
+  // ---------- Стъпка 1а (STAPKA1A-SPEC.md, ЧАСТ А) — „Събрано до …“, версиите, „↳“, закъснелите, приложенията, мерене ----------
+  // Всичко ново в базата (dni.sabrano/promeni, tochki.vav_versiq/obnovena_v/predishen_tekst/prodalzhenie, dokumenti, новите
+  // редове на svezhest/metriki) телефонът само ЧЕТЕ; пише само resheniq (vrazka_ne, odobri с tekst) и metriki (aktivno_*, izvan_*).
+  // Без 010 (колоните/таблицата ги няма) → тихо досегашното поведение.
+  // ======================================================================================================================
+  var NV_MALKO = 'Одобрява се само показаната версия. Твоите ✓, ✎, → и 🚫 остават на същите точки; сменените точки ще ги видиш отново.';
+  var VIDW = { palna: 'пълна', obnovqvane: 'обновяване', dobavka: 'сутрешна добавка', nagonvane: 'наваксване (лаптопът беше изключен)', zakasneli: 'със закъснелите' };
+  function jObj(x) { if (typeof x === 'string') { try { x = JSON.parse(x); } catch (e) { x = null; } } return x && typeof x === 'object' && !Array.isArray(x) ? x : null; }
+  function sabOf(d) { var s = d ? jObj(d.sabrano) : null; return s && s.vzeto ? s : null; }
+  function promOf(d) { return d ? jObj(d.promeni) : null; }
+  function sabOn() { var d = S.den; return !!(d && d.status === 'chernova' && sabOf(d)); }
+  function minOf(d) { return d.getHours() * 60 + d.getMinutes(); }
+  function hmIso(iso) { var d = new Date(iso); return isNaN(d) ? '' : hhmm(d); }
+
+  // ---- 1а [§6.4]: нова версия — един текст навсякъде (горната лента, тостът, листът, лентата долу) ----
+  function nvTxt() {
+    var h = S.newHead || {}, v = S.newVersiq || h.versiq, t = h.obnoven ? hmIso(h.obnoven) : '', sb = jObj(h.sabrano), pr = jObj(h.promeni);
+    var nm = pr && +pr.v === +v ? (pr.mahnati || []).filter(function (x) { return x && x.otgovor; }).length : 0;
+    // и моите отговори за показаната версия, чиято точка вече я няма (ON DELETE SET NULL) — когато promeni липсва
+    var d0 = S.den, nn = d0 ? S.res.filter(function (r) { return r.tochka_id == null && ANS4[r.vid] && +r.versiq === +d0.versiq; }).length : 0;
+    nm = Math.max(nm, nn);
+    return '🔄 Дойде по-нова версия (v' + v + (t ? ', ' + t : '') + (sb && sb.chas && sb.vid === 'obnovqvane' ? ', обновяване от ' + sb.chas : '') + ') — отговорите ти са запазени' +
+      (nm ? ' (на ' + nm + ' ' + pl(nm, 'махната точка', 'махнати точки') + ' — не; виж ' + pl(nm, 'коя', 'кои') + ')' : '') + '.';
+  }
+  // какво носи показаната версия: promeni (ако е за нея), иначе — от vav_versiq/obnovena_v на точките
+  function viData(d) {
+    d = d || S.den; if (!d || +d.versiq <= 1 || !S.tochki.some(function (t) { return t.k != null; })) return null;
+    var v = +d.versiq, p = promOf(d), novi, obn, mah = [];
+    if (p && +p.v === v) { novi = (p.novi || []).length; obn = (p.obnoveni || []).length; mah = (p.mahnati || []).filter(function (x) { return x && typeof x === 'object'; }); }
+    else { novi = S.tochki.filter(function (t) { return +t.vav_versiq === v; }).length; obn = S.tochki.filter(function (t) { return +t.obnovena_v === v; }).length; }
+    if (!novi && !obn && !mah.length) return null;
+    var q = queue(), star = S.tochki.filter(function (t) { return +t.obnovena_v === v && mineStar(t, q); }).length;
+    return { v: v, novi: novi, obn: obn, mah: mah, star: star };
+  }
+  function viCnt(x) {
+    return [x.novi + ' ' + pl(x.novi, 'нова', 'нови'), x.obn + ' ' + pl(x.obn, 'обновена', 'обновени')].concat(x.mah.length ? [x.mah.length + ' ' + pl(x.mah.length, 'махната', 'махнати')] : []).join(' · ');
+  }
+  function viToast() { var x = viData(); return x ? 'Показана е v' + x.v + ' — ' + viCnt(x) + '.' : 'Показана е v' + (S.den ? S.den.versiq : '') + '.'; }
+  // карта #verInfo над групите (до следващата версия; „✕“ я скрива за тази версия — в паметта)
+  var VI = { skrit: {}, i: 0, key: '' };
+  function renderVerInfo() {
+    var el = box('#verInfo'); if (!el) return;
+    var d = S.den, x = d && !newPending() ? viData(d) : null;
+    if (!x || VI.skrit[d.id + ':' + x.v]) { el.innerHTML = ''; return; }
+    var sb = sabOf(d), hd = '🔄 v' + x.v + ' от ' + rel(d.obnoven) + (sb && sb.chas && sb.vid ? ' (' + (VIDW[sb.vid] || 'версия') + ' от ' + sb.chas + ')' : '') + ': ' + viCnt(x) + '.';
+    el.innerHTML = '<section class="vi" aria-label="Какво е новото във версията"><div class="vi-h"><p><b>' + esc(hd) + '</b> Отговорите ти са запазени' +
+        (x.star ? '; ' + x.star + ' от обновените ' + pl(x.star, 'я виж', 'ги виж') + ' отново.' : '.') + '</p>' +
+        '<button type="button" class="vi-x" data-a="viX" aria-label="Скрий за тази версия">✕</button></div>' +
+      (x.obn ? '<button type="button" class="btn ghost sb vi-go" data-a="viGo">Покажи обновените ›</button>' : '') +
+      x.mah.map(function (m) { return '<p class="vi-m">Махната: „' + esc(clip(m.tekst || ('точка ' + m.k), 120)) + '“' + (m.otgovor ? ' · имаше твой отговор' : '') + '</p>'; }).join('') + '</section>';
+  }
+  // „Покажи обновените ›“ — всяко натискане: следващата обновена точка (разгъва „Прегледани“, светва; факт → редът в „Пълен запис“)
+  function viGo() {
+    var d = S.den; if (!d) return;
+    var l = S.tochki.filter(function (t) { return +t.obnovena_v === +d.versiq; }).sort(function (a, b) { return (a.red || 0) - (b.red || 0) || a.id - b.id; });
+    if (!l.length) return;
+    var k = d.id + ':' + d.versiq; if (VI.key !== k) { VI.key = k; VI.i = 0; }
+    var t = l[VI.i % l.length]; VI.i++;
+    pointGo(t);
+  }
+  // точката на екрана: разгъва свитата карта, светва; факт (без карта) → редът му в „📄 Пълен запис“
+  function pointGo(t) {
+    if (!t) return;
+    if (t.grupa === 'fakt' || !GRUPI.some(function (G) { return G.k === t.grupa; })) { fullGo(t); return; }
+    if (pregledana(t)) { S.revOpen[t.grupa] = true; S.revCard[t.id] = true; renderGroups(); }
+    var el = document.querySelector('#groups .pc[data-tid="' + t.id + '"]');
+    if (!el) { toast('Картата я няма в тази версия'); return; }
+    flashEl(el);
+    if (WIDE) panSelect(t.id);
+  }
+  // точките с мой отговор за стар текст (листът „Одобряваш ли…“ › „🔄 N точки са сменени след твоя отговор ›“)
+  function starPts() { var q = queue(); return S.tochki.filter(function (t) { return mineStar(t, q); }).sort(function (a, b) { return (a.red || 0) - (b.red || 0) || a.id - b.id; }); }
+  function starGo() { var l = starPts(); closeSheet(); if (l.length) setTimeout(function () { pointGo(l[0]); }, 60); }
+  // „✓ Още е вярно“ — нов ✓ за показаната версия (старият остава в базата; работникът не прави стария ✓ „проверено“ за новия текст)
+  function pcOkStar(tid) {
+    var t = findT(tid), d = S.den; if (!t || !d) return;
+    if (newPending()) { toast('Има нова версия — натисни „Покажи новата версия“ първо.', 'bad'); return; }
+    var res = t.grupa === 'reshenie', o = d.obekt || OBEKT_KOD, data = d.data;
+    var row = { den_id: d.id, tochka_id: tid, vid: 'potvardi', versiq: d.versiq, hesh: d.hesh || null, ustroistvo: device() };
+    if (res) row.tekst = 'отговорено';
+    undoStart({ key: 'pc:' + tid, kind: 'pc', tid: tid, lbl: '✓ Още е вярно', tbl: 'resheniq', row: row, meta: { tt: t.tekst },
+      now: function () { if (res) noteClose(tid, o, data, true, null); }, back: function () { if (res) unClose(tid); } });
+  }
+  // пиловете на картата: 🆕 нова / 🔄 обновена във vN · ⏰ закъснели за ДД.ММ · ✎ поправка към записа за ДД.ММ [§6.4, §6.6]
+  var ZAK_RE = /^\s*Закъснели за (\d{1,2}\.\d{1,2})/i, POPR_RE = /^\s*Поправка към записа за (\d{1,2}\.\d{1,2})/i;
+  function verPills(t) {
+    var d = S.den, h = ''; if (!d) return '';
+    if (t.k != null && +d.versiq > 1) {
+      if (+t.vav_versiq === +d.versiq) h += '<span class="pill p-nov">🆕 нова във v' + esc(d.versiq) + '</span>';
+      else if (+t.obnovena_v === +d.versiq) h += '<span class="pill p-nov">🔄 обновена във v' + esc(d.versiq) + '</span>';
+    }
+    var tx = String(t.tekst || ''), m = POPR_RE.exec(tx), z = ZAK_RE.exec(tx), den = (t.izvori || []).filter(function (s) { return s && /^\d{4}-\d{2}-\d{2}$/.test(String(s.den || '')); })[0];
+    if (m) h += '<span class="pill p-zak">✎ поправка към записа за ' + esc(m[1]) + '</span>';
+    else if (z || den) h += '<span class="pill p-zak">⏰ закъснели за ' + esc(z ? z[1] : dvDat(den.den, true)) + '</span>';
+    return h;
+  }
+  // „беше: …“ — предишният текст на обновена точка, ако съм отговорил по нея (сив, малък; „Покажи целия“ над 160)
+  var WAS = {};
+  function wasHtml(t, m) {
+    var d = S.den; if (!d || +t.obnovena_v !== +d.versiq || !t.predishen_tekst || !(m.ans || m.ok)) return '';
+    var p = String(t.predishen_tekst), lng = p.length > 160 && !WAS[t.id];
+    return '<p class="pc-was">беше: „' + esc(lng ? clip(p, 160) : p) + '“' + (lng ? ' <button type="button" class="lnk" data-a="wasFull" data-tid="' + esc(t.id) + '">Покажи целия</button>' : '') + '</p>';
+  }
+
+  // ---- 1а [§6.5, §4.6]: „↳ продължение на …“ (само в AiLab; „✕“ маха връзката с едно докосване) ----
+  function prdOf(t) { var p = t ? jObj(t.prodalzhenie) : null; return p && p.kratko && (p.tid != null || (p.data && p.k != null)) ? p : null; }
+  function vrazkaNe(t, q) {
+    if (S.res.some(function (r) { return r.vid === 'vrazka_ne' && r.tochka_id === t.id; })) return true;
+    return (q || queue()).some(function (it) { return it.tbl === 'resheniq' && it.row && it.row.vid === 'vrazka_ne' && it.row.tochka_id === t.id; });
+  }
+  function prdHtml(t, q) {
+    var p = prdOf(t); if (!p || vrazkaNe(t, q)) return '';
+    var lbl = p.tid != null ? String(p.kratko) : dvDat(p.data, true) + ' ' + p.kratko;
+    return '<div class="prd"><button type="button" class="prd-l" data-a="prd" data-tid="' + esc(t.id) + '"><span aria-hidden="true">↳</span> продължение на: ' + esc(lbl) + ' ›</button>' +
+      '<button type="button" class="prd-x" data-a="prdNe" data-tid="' + esc(t.id) + '" aria-label="Не е продължение — махни връзката">✕</button></div>';
+  }
+  function prdGo(tid) {
+    var t = findT(tid), p = prdOf(t); if (!p) return;
+    if (p.tid != null) { izadGo(+p.tid); return; }
+    var o = S.den ? S.den.obekt || OBEKT_KOD : OBEKT_KOD;
+    var x = S.dni.filter(function (r) { return r.data === p.data && (r.obekt || o) === o; })[0], id = x ? x.id : (p.den_id != null ? +p.den_id : null);
+    if (!id) { toast('Денят ' + dvDat(p.data, true) + ' не е в списъка.'); return; }
+    commitUndos();
+    S.flash = { den: id, tid: p.tochka_id != null ? +p.tochka_id : null, k: +p.k };
+    if (S.den && S.den.id === id) { flashPoint(); return; }
+    openDay(id);
+  }
+  function prdNe(tid) {
+    var t = findT(tid), d = S.den; if (!t || !d) return;
+    if (newPending()) { toast('Има нова версия — натисни „Покажи новата версия“ първо.', 'bad'); return; }
+    var row = { den_id: d.id, tochka_id: tid, vid: 'vrazka_ne', versiq: d.versiq, hesh: d.hesh || null, ustroistvo: device() };
+    undoStart({ key: 'prd:' + tid, kind: 'prd', tid: tid, lbl: '↳ Връзката е махната', tbl: 'resheniq', row: row, meta: { tt: t.tekst } });
+  }
+
+  // ---- 1а [§6.1]: данните на деня — „след черновата е дошло“, приложенията на деня, закъснелите (само в паметта) ----
+  var SLED = {}, DOK = { den: {}, all: null, allSt: '', allAt: 0, allErr: null, lst: {} }, ZAK = {};
+  function den1aLoad(poll) {
+    var d = S.den; if (!d || !api) return;
+    var sb = sabOf(d), o = d.obekt || OBEKT_KOD;
+    if (d.status === 'chernova' && sb) { sledLoad(d, sb.vzeto); dokLoad(d, !poll); }
+    else if (d.status !== 'chernova') { zakLoad(d, !poll); if (sb) sledLoad(d, sb.vzeto); }
+  }
+  function den1aPaint(id) {
+    if (view !== 'day' || !S.den || S.den.id !== id) return;
+    renderFresh(); renderAppr();
+    if (sheetKind === 'sab') sabSheetPaint();
+    if (sheetKind === 'dokd') dokDenPaint();
+  }
+  function sledLoad(d, ot) {
+    var o = d.obekt || OBEKT_KOD, id = d.id, x = SLED[id];
+    if (!ot || offNow() || (!DEMO && (!db || !user))) { if (!x || x.ot !== ot) SLED[id] = { ot: ot, st: 'net' }; return; }
+    if (x && x.busy) return;
+    SLED[id] = Object.assign(x && x.ot === ot ? x : { ot: ot }, { busy: true });
+    api.slednoBroi(o, d.data, ot).then(function (r) { SLED[id] = { ot: ot, st: 'ok', teams: r.teams, mail: r.mail, at: Date.now() }; den1aPaint(id); },
+      function (e) { SLED[id] = Object.assign(SLED[id] || {}, { ot: ot, busy: false, st: isMissing(e) || isNoCol(e) ? 'missing' : isNet(e) || isAuth(e) ? 'net' : 'err' }); den1aPaint(id); });
+  }
+  function sledOf(d) { var x = d && SLED[d.id], sb = sabOf(d); return x && sb && x.ot === sb.vzeto ? x : null; }
+  function dokKey(d) { return (d.obekt || OBEKT_KOD) + ':' + d.data; }
+  function dokLoad(d, force) {
+    var k = dokKey(d), x = DOK.den[k];
+    if (x && (x.busy || (!force && Date.now() - (x.at || 0) < 300000))) return;
+    if (offNow() || !api || (!DEMO && (!db || !user))) { if (!x) DOK.den[k] = { st: 'net', at: 0 }; return; }
+    DOK.den[k] = Object.assign(x || {}, { busy: true });
+    api.dokDen(d.obekt || OBEKT_KOD, d.data).then(function (rows) { DOK.den[k] = { rows: rows || [], st: 'ok', at: Date.now() }; den1aPaint(d.id); },
+      function (e) { DOK.den[k] = Object.assign(DOK.den[k] || {}, { busy: false, at: Date.now(), st: isMissing(e) || isNoCol(e) ? 'missing' : isNet(e) || isAuth(e) ? 'net' : 'err' }); den1aPaint(d.id); });
+  }
+  function dokOf(d) { var x = d ? DOK.den[dokKey(d)] : null; return x && x.st === 'ok' ? x.rows : null; }
+  function dokBroi(rows) {
+    var b = { n: 0, prochet: 0, samo_ime: 0, ne_moje: 0, otlojen: 0, nov: 0 };
+    (rows || []).forEach(function (r) { b.n++; if (b[r.status] != null) b[r.status]++; });
+    return b;
+  }
+  // „непрочетени“ = nov + otlojen (и двете чакат следващия пуск, §4.8) — едно число навсякъде: „непрочетени 3 (2 отложени)“
+  function dokNp(b) { var n = b.nov + b.otlojen; return 'непрочетени ' + n + (b.otlojen ? ' (' + b.otlojen + ' ' + pl(b.otlojen, 'отложен', 'отложени') + ')' : ''); }
+  function zakLoad(d, force) {
+    var k = dokKey(d), x = ZAK[k];
+    if (x && (x.busy || (!force && Date.now() - (x.at || 0) < 300000))) return;
+    if (offNow() || !api || (!DEMO && (!db || !user))) return;
+    ZAK[k] = Object.assign(x || {}, { busy: true });
+    api.zakasneliZa(d.obekt || OBEKT_KOD, d.data).then(function (rows) { ZAK[k] = { rows: rows || [], st: 'ok', at: Date.now() }; den1aPaint(d.id); },
+      function (e) { ZAK[k] = { rows: [], st: isMissing(e) || isNoCol(e) ? 'missing' : 'err', at: Date.now() }; den1aPaint(d.id); });
+  }
+
+  // ---- 1а [§4.9]: липсите — само такива, които следващата версия може да оправи; информацията (не може, вход в Интранета) — отделно ----
+  var IZ_SAB = [['teams', '💬', 'Тиймс'], ['poshta', '✉️', 'Поща'], ['intranet', '🗂️', 'Интранет'], ['prisystvia', '👷', 'Присъствия'], ['prilojeniq', '📎', 'Приложения']];
+  function izVhod() { var s = svOf('intranet'); return !!(s && s.ok === false && /вход|влез/i.test(String(s.belejka || ''))); }
+  function prisVav(d) {   // кога са въведени Присъствията (sinhr, иначе obnoveno_v) — от разбивката на деня
+    var o = d.obekt || OBEKT_KOD, p = prisOf(o, d.data); if (!p) return null;
+    var det = prisDet(o, d.data); return det ? (det.sinhr || det.obnoveno_v || null) : null;
+  }
+  function lipsi(d) {
+    var sb = sabOf(d); if (!sb) return [];
+    var out = [], iz = sb.izvori || {}, o = d.obekt || OBEKT_KOD, vz = Date.parse(sb.vzeto), sp = svSpi(), ch = svOf('chernova');
+    if (sp.spi) out.push({ k: 'spi', txt: '💻 Лаптопът е изключен от ' + sp.ot + ' — след това нищо не се събира' });
+    if (ch && ch.ok === false) out.push({ k: 'cikal', txt: '⚠️ ' + (ch.belejka || 'черновата не е минала') });
+    var pz = iz.prisystvia || {}, p = prisOk() ? prisOf(o, d.data) : null, pv = p ? prisVav(d) : null;
+    if (!p && !pz.ima_zapis) out.push({ k: 'pris0', txt: '👷 Присъствия: още няма запис' });
+    else if (p && pv && Date.parse(pv) > vz) out.push({ k: 'pris1', txt: '👷 Присъствия са въведени след черновата (' + hmIso(pv) + ')' });
+    var sl = sledOf(d);
+    if (!offNow() && sl && sl.st === 'ok' && sl.teams + sl.mail > 0) out.push({ k: 'sled', txt: 'След черновата: 💬 ' + sl.teams + ' · ✉️ ' + sl.mail });
+    var db0 = dokBroi(dokOf(d)), nn = db0.nov + db0.otlojen;
+    if (nn) out.push({ k: 'dok', txt: '📎 ' + nn + ' ' + pl(nn, 'още не е прочетено', 'още не са прочетени') });
+    // Интранетът е четен > 3 ч преди снимката, а днес още може да се чете (до 19:59, на 2 ч) → чакането го оправя
+    var ix = iz.intranet, it0 = ix && ix.posledno ? Date.parse(ix.posledno) : NaN;
+    if (ix && ix.ok !== false && !isNaN(it0) && vz - it0 > 3 * 36e5 && daysAgo(d.data) <= 0 && minOf(now()) < 19 * 60 + 30) out.push({ k: 'iz:intranet', txt: '🗂️ Интранет от ' + hmIso(ix.posledno) });
+    IZ_SAB.forEach(function (z) {
+      var x = iz[z[0]]; if (!x || x.ok !== false) return;
+      if (z[0] === 'intranet' && izVhod()) return;   // иска действие от РП — само информация
+      out.push({ k: 'iz:' + z[0], txt: '⚠️ ' + z[2] + ' не е чело' });
+    });
+    return out;
+  }
+  function lipsiInfo(d) {
+    var out = [], b = dokBroi(dokOf(d)), sl = sledOf(d);
+    if (b.ne_moje) out.push('📎 ' + b.ne_moje + ' не може (виж защо) ›');
+    if (izVhod()) out.push('🗂️ Интранетът иска вход — влез отново в Интранета от лаптопа');
+    if (offNow() || !sl || sl.st === 'net') out.push('📴 Новото след черновата — когато има покритие');
+    return out;
+  }
+  // „<кога>“ — следващата версия на деня [§4.9] (по часа на устройството)
+  function techeOt(c) { var m = /тече от (\d{1,2}:\d{2})/.exec(String((c && c.belejka) || '')); return m ? m[1] : (c && c.posledno ? hmIso(c.posledno) : ''); }
+  function slednaV(d) {
+    var c = svOf('chernova'), sp = svSpi(), m = minOf(now()), dd = daysAgo(d.data);
+    if (c && +c.broi === 1 && !sp.spi) return 'тече сега (от ' + techeOt(c) + ')';
+    if (sp.spi) return dd <= 0 ? 'щом лаптопът се включи до 22:45 — веднага; иначе в 09:00 (само ако дойде нещо ново)' : 'в 09:00, ако лаптопът е включен';
+    if (dd <= 0) return m < 18 * 60 + 55 ? 'днес в 19:00' : m < 22 * 60 + 40 ? 'днес в 22:45' : 'утре в 09:00 (само ако дойде нещо ново)';
+    if (dd === 1) return m < 8 * 60 + 55 ? 'днес в 09:00 (само ако дойде нещо ново)' : 'утре в 09:00 (само ако дойде нещо ново)';
+    return 'при сутрешното наваксване (09:00)';
+  }
+  // „следващата писана чернова“ (ДД.ММ в бутона) [§4.3]: днешният ден → утре; по-стар, днешният на обекта още не е одобрен и сега < 22:40 → днес
+  function dnesOdobren(o) {
+    var t = ymd(now()), r = TB.dni.concat(S.dni).filter(function (x) { return x.data === t && (x.obekt || OBEKT_KOD) === o; })[0];
+    if (!r) return false;
+    return r.status !== 'chernova' || liveQ().some(function (it) { return it.tbl === 'resheniq' && it.row.vid === 'odobri' && it.row.den_id === r.id; });
+  }
+  function nextPisanaD(d) {
+    var n = now(), t = ymd(n), tom = new Date(n.getFullYear(), n.getMonth(), n.getDate() + 1);
+    if (d.data >= t) return tom;
+    return !dnesOdobren(d.obekt || OBEKT_KOD) && minOf(n) < 22 * 60 + 40 ? new Date(n.getFullYear(), n.getMonth(), n.getDate()) : tom;
+  }
+  function nextPisana(d) { return ddmm(nextPisanaD(d)); }
+  // ненанесените ✎ (поправки, разяснения, оспорвания) на деня — базата + опашката [§6.3]
+  function fixCakat(d) {
+    var n = 0, kl = {};
+    queue().forEach(function (it) { if (it.tbl === 'resheniq' && !it.err && it.row && it.row.den_id === d.id && /^(popravka|komentar|osporva)$/.test(it.row.vid)) { n++; if (it.row.klient_id) kl[it.row.klient_id] = 1; } });
+    S.res.forEach(function (r) { if (r.den_id === d.id && /^(popravka|komentar|osporva)$/.test(r.vid) && !r.obraboteno && !(r.klient_id && kl[r.klient_id])) n++; });
+    return n;
+  }
+
+  // ---- 1а [§6.2]: лентата „📥 Събрано до …“ (Преглед, чернова със sabrano) ----
+  function sabState(d) {
+    var c = svOf('chernova'), sp = svSpi(), L = lipsi(d);
+    if (c && +c.broi === 1 && !sp.spi) {
+      var obn = /обнов|добав|сутрин/i.test(String(c.belejka || ''));
+      return { txt: '⏳ ' + (obn ? 'Обновяване' : 'Пълна чернова') + ' тече от ' + techeOt(c) + ' — обикновено до ' + (obn ? 15 : 30) + ' мин', warn: false, L: L };
+    }
+    if (sp.spi) return { txt: '💻 Лаптопът е изключен от ' + sp.ot + ' — след това нищо не се събира', warn: true, next: true, L: L };
+    if (c && c.ok === false) return { txt: '⚠️ ' + (c.belejka || 'черновата не е минала'), warn: true, next: true, L: L };
+    var l2 = L.filter(function (x) { return x.k !== 'spi' && x.k !== 'cikal'; });
+    if (l2.length) return { txt: l2.slice(0, 2).map(function (x) { return x.txt; }).join(' · ') + (l2.length > 2 ? ' +' + (l2.length - 2) : ''), warn: true, next: true, L: L };
+    return { txt: '✓ Всичко за деня е събрано', warn: false, ok: true, L: L };
+  }
+  function renderSab(el) {
+    var d = S.den, sb = sabOf(d), st = sabState(d), inf = lipsiInfo(d);   // сивите редове (не може, вход, 📴) — информация, не липса
+    el.innerHTML = '<button type="button" class="fresh sab' + (st.warn ? ' warn' : '') + '" data-a="sabrano" aria-label="Събрано до ' + esc(rel(sb.vzeto)) + ' — подробно">' +
+      '<span class="sab-1">📥 Събрано до ' + esc(rel(sb.vzeto)) + ' · v' + esc(d.versiq) + ' от ' + esc(rel(d.obnoven)) + '</span>' +
+      '<span class="sab-2">' + esc(st.txt) + '</span>' +
+      (inf.length ? '<span class="sab-i">' + inf.map(esc).join(' · ') + '</span>' : '') +
+      (st.next ? '<span class="sab-n">Следваща версия: ' + esc(slednaV(d)) + '</span>' : '') +
+      '<span class="fr-go" aria-hidden="true">›</span></button>';
+  }
+  // „Черновата: v2 — обновяване, 22:58“ / „· проверено 22:47 — нищо ново“ / „(пускът от 19:00 тръгна в 20:41 — лаптопът беше изключен)“
+  function verRed(d, sb) {
+    var s = 'v' + d.versiq + (sb.vid ? ' — ' + (VIDW[sb.vid] || sb.vid) : '') + ', ' + rel(d.obnoven);
+    if (sb.provereno) return s + ' · проверено ' + rel(sb.provereno) + ' — нищо ново';
+    var tr = sb.tragnal ? new Date(sb.tragnal) : null, m = /^(\d{1,2}):(\d{2})$/.exec(String(sb.chas || ''));
+    if (tr && !isNaN(tr) && m) {
+      var base = new Date(tr.getFullYear(), tr.getMonth(), tr.getDate(), +m[1], +m[2]);
+      if (tr - base > 30 * 60000) s += ' (пускът от ' + sb.chas + ' тръгна в ' + hhmm(tr) + ' — лаптопът беше изключен)';
+    }
+    return s;
+  }
+  function sabRow(e, ime, val, cls, a) {
+    var h = '<span class="sab-e" aria-hidden="true">' + e + '</span><span class="sab-k">' + ime + '</span><span class="sab-v">' + val + '</span>';
+    return a ? '<button type="button" class="sab-r' + (cls ? ' ' + cls : '') + '" data-a="' + a + '">' + h + '<span class="sab-go" aria-hidden="true">›</span></button>' : '<div class="sab-r' + (cls ? ' ' + cls : '') + '">' + h + '</div>';
+  }
+  // горната част на листа „Събрано до …“ (и разгънатото „Подробно“ в „Одобряваш ли деня?“) [§6.3]
+  function sabTop(d, zagl) {
+    var sb = sabOf(d); if (!sb) return '';
+    var iz = sb.izvori || {}, sp = svSpi(), o = d.obekt || OBEKT_KOD, h = '';
+    if (zagl) h += '<div class="ap-sum"><span class="ap-d">' + esc(dayTitle(d.data)) + '</span><span class="ap-v">v' + esc(d.versiq) + '</span></div>';
+    if (sp.spi) h += '<p class="fr-sleep">💻 Лаптопът е изключен от ' + esc(sp.ot) + ' — данните след това не са събрани; черновата е от ' + esc(rel(d.obnoven)) + '.</p>';
+    h += '<p class="sab-ch"><b>Черновата:</b> ' + esc(verRed(d, sb)) + '</p><div class="sab-l"><div class="sab-t">Събрано до ' + esc(rel(sb.vzeto)) + ':</div>';
+    [['teams', '💬', 'Тиймс'], ['poshta', '✉️', 'Поща'], ['intranet', '🗂️', 'Интранет']].forEach(function (z) {
+      var x = iz[z[0]];
+      var v = !x ? '—' : (x.posledno ? esc(rel(x.posledno)) + ' ' : '') + (x.ok === false ? (z[0] === 'intranet' && izVhod() ? '⚠️ иска вход — влез отново от лаптопа' : '⚠️ не е чело') : '✓') + (z[0] === 'intranet' ? ' · чете се до 20:00' : '');
+      h += sabRow(z[1], z[2], v, x && x.ok === false ? 'warn' : '');
+    });
+    var pz = iz.prisystvia || {}, p = prisOk() ? prisOf(o, d.data) : null, pv = p ? prisVav(d) : null, pt, pc = '';
+    if (!p && !pz.ima_zapis) { pt = '⚠️ още няма запис за деня'; pc = 'warn'; }
+    else if (p && pv && Date.parse(pv) > Date.parse(sb.vzeto)) { pt = 'въведени след черновата (' + esc(hmIso(pv)) + ') — влизат в следващата версия'; pc = 'warn'; }
+    else if (p) pt = (pv ? 'въведени ' + esc(rel(pv)) + ' · ' : '') + 'нето ' + esc(p.neto) + ' ✓';
+    else pt = (pz.vavedeno ? 'въведени ' + esc(rel(pz.vavedeno)) + ' · ' : '') + (pz.neto != null ? 'нето ' + esc(pz.neto) + ' ' : '') + '✓';
+    h += sabRow('👷', 'Присъствия', pt, pc);
+    var dx = DOK.den[dokKey(d)], rows = dokOf(d), b = dokBroi(rows);
+    if (rows) h += sabRow('📎', 'Приложения', !b.n ? 'няма за деня' : b.n + ' · прочетени ' + b.prochet + (b.samo_ime ? ' · само по име ' + b.samo_ime : '') + (b.ne_moje ? ' · не може ' + b.ne_moje : '') +
+      (b.nov + b.otlojen ? ' · ' + dokNp(b) : ''), b.nov + b.otlojen ? 'warn' : '', b.n ? 'dokDen' : '');
+    else h += sabRow('📎', 'Приложения', dx && dx.st === 'missing' ? 'регистърът още не е в облака' : dx && dx.st === 'net' ? '📴 когато има покритие' : dx && dx.st === 'err' ? 'не се заредиха' : '<span class="pulse" aria-hidden="true"></span>', '');
+    var mt = iz.meteo || {};
+    h += sabRow('🌡️', 'Времето', mt.ok ? esc(mt.mqsto || 'модел за града') + ' ✓' : 'няма — раздел 2 е по съобщенията', '');
+    h += '</div>';
+    var sl = sledOf(d);
+    h += offNow() || !sl || sl.st === 'net' ? '<p class="sab-sl">📴 Новото след черновата — когато има покритие.</p>'
+      : sl.st !== 'ok' ? (sl.busy ? '<p class="sab-sl"><span class="pulse" aria-hidden="true"></span> проверявам дошлото след черновата…</p>' : '')
+      : sl.teams + sl.mail ? '<p class="sab-sl warnline">След черновата е дошло: 💬 ' + sl.teams + ' · ✉️ ' + sl.mail + ' — влизат в следващата версия (' + esc(slednaV(d)) + ').</p>'
+      : '<p class="sab-sl">Нищо ново след черновата.</p>';
+    return h;
+  }
+  function openSab() {
+    var d = S.den; if (!d || !sabOf(d)) return;
+    dokLoad(d); sledLoad(d, sabOf(d).vzeto);
+    openSheet('Събрано до ' + rel(sabOf(d).vzeto), '<div id="sabB" class="sab-sh">' + sabTop(d, true) + '</div>', 'sab');
+  }
+  function sabSheetPaint() { var b = sheetEl && sheetKind === 'sab' ? sheetEl.querySelector('#sabB') : null; if (b && S.den) putH(b, sabTop(S.den, true)); }
+  // „Одобряваш ли деня?“ — горната част, свита до „Събрано до“ + редовете с ⚠️; „Подробно ›“ я разгъва
+  function sabApTop(d, L) {
+    var sb = sabOf(d);
+    return '<div class="ap-sab"><div class="ap-sab1">📥 Събрано до ' + esc(rel(sb.vzeto)) + ' · v' + esc(d.versiq) + ' от ' + esc(rel(d.obnoven)) + '</div>' +
+      (L.length ? L.map(function (x) { return '<p class="ap-lp">' + esc(x.txt) + '</p>'; }).join('') : '<p class="ap-lp ok">✓ Всичко за деня е събрано</p>') +
+      '<details class="ap-det"><summary>Подробно ›</summary><div class="sab-sh">' + sabTop(d, false) + '</div></details></div>';
+  }
+  function apWait() {
+    var d = S.den; closeSheet();
+    if (d) toast('Добре — следващата версия идва ' + slednaV(d) + '. Отговорите ти остават.');
+  }
+
+  // ---- 1а [§4.4, §6.6]: одобрен/вписан ден — закъснелите („влязоха в …“ / „остават само в AiLab“ / „влиза в следващата чернова“) ----
+  function zakLine(d) {
+    if (!d || d.status === 'chernova' && apprState().k === 'none') return '';
+    var last = null; S.res.forEach(function (r) { if (r.den_id === d.id && r.vid === 'odobri') last = r; });
+    liveQ().forEach(function (it) { if (it.tbl === 'resheniq' && it.row.vid === 'odobri' && it.row.den_id === d.id) last = it.row; });
+    var z = ZAK[dokKey(d)], n = 0, kam = null;
+    (z && z.rows || []).forEach(function (r) {
+      var s = jObj(r.sabrano), x = s && jObj(s.zakasneli) ? jObj(s.zakasneli)[d.data] : null;
+      if (x && +x.n > 0) { n += +x.n; if (!kam || r.data < kam.data) kam = r; }
+    });
+    if (n && kam) return '<button type="button" class="zak-l" data-a="day" data-id="' + esc(kam.id) + '">⏰ ' + n + ' ' + pl(n, 'закъсняло нещо', 'закъснели неща') + ' за този ден ' + pl(n, 'влезе', 'влязоха') + ' в ' + esc(dvDat(kam.data, true)) + ' ›</button>';
+    var sb = sabOf(d); if (!sb || !last) return '';
+    var tk = last.tekst;
+    if (tk === 'добави утре') {
+      var dn = ymd(nextPisanaD(d)) === ymd(now());
+      return '<p class="zak-p">⏰ Каквото дойде за този ден, влиза в следващата чернова (' + (dn ? 'тази вечер' : 'утре в 19:00') + ').</p>';
+    }
+    var sl = sledOf(d);
+    return sl && sl.st === 'ok' && sl.teams + sl.mail ? '<p class="zak-p">След одобрението са дошли: 💬 ' + sl.teams + ' · ✉️ ' + sl.mail + ' — остават само в AiLab.</p>' : '';
+  }
+
+  // ---- 1а [§6.8]: „📎 Приложенията“ — регистърът (Настройки, листовете „не може — защо“, „непрочетени“, „на деня“) ----
+  var DOK_ST = { prochet: 'прочетен', samo_ime: 'само по име', ne_moje: 'не може', otlojen: 'отложен', nov: 'непрочетен' };
+  // броевете: obekt,status на всички редове от DOK_OT, по страници — без таван (1000 реда стигат само до декември)
+  function dokAllLoad(force) {
+    if (DOK.allBusy || (!force && DOK.all && Date.now() - DOK.allAt < 300000)) return;
+    if (offNow() || !api || (!DEMO && (!db || !user))) { if (!DOK.all) DOK.allSt = 'net'; return; }
+    DOK.allBusy = true;
+    allPages(function (rg) { return api.dokVsichki(DOK_OT, rg); }).then(function (rows) { DOK.allBusy = false; DOK.all = rows || []; DOK.allSt = 'ok'; DOK.allAt = Date.now(); dokAllPaint(); },
+      function (e) { DOK.allBusy = false; DOK.allSt = isMissing(e) || isNoCol(e) ? 'missing' : isNet(e) || isAuth(e) ? 'net' : 'err'; DOK.allErr = e; DOK.allAt = Date.now(); dokAllPaint(); });
+  }
+  // листовете — своя заявка само за своите статуси (не изрязък от броевете): старите „не може“ не отпадат
+  var DOK_LST = { ne: ['ne_moje'], nov: ['nov', 'otlojen'] };
+  function dokLstLoad(v, force) {
+    var x = DOK.lst[v];
+    if (!DOK_LST[v] || (x && (x.busy || (!force && x.rows && Date.now() - (x.at || 0) < 300000)))) return;
+    if (offNow() || !api || (!DEMO && (!db || !user))) { DOK.lst[v] = Object.assign(x || {}, { st: 'net' }); return; }
+    DOK.lst[v] = Object.assign(x || {}, { busy: true });
+    allPages(function (rg) { return api.dokSt(DOK_OT, DOK_LST[v], rg); }).then(function (rows) { DOK.lst[v] = { rows: rows || [], st: 'ok', at: Date.now() }; dokAllPaint(); },
+      function (e) { DOK.lst[v] = Object.assign(DOK.lst[v] || {}, { busy: false, at: Date.now(), err: e, st: isMissing(e) || isNoCol(e) ? 'missing' : isNet(e) || isAuth(e) ? 'net' : 'err' }); dokAllPaint(); });
+  }
+  function dokAllPaint() {
+    if (view === 'nastroiki') renderNastroiki();
+    if (sheetKind === 'dok' && DOK.sh) dokSheet(DOK.sh, true);
+  }
+  function dokMsg(st, err) {
+    if (st === 'missing') return '<p class="small muted">Регистърът на приложенията още не е в облака.</p>';
+    if (st === 'net') return '<p class="small muted">📴 Когато има покритие.</p>';
+    if (st === 'err') return '<p class="small muted">Не се зареди: ' + esc(errBg(err)) + '</p>';
+    return '<p class="small muted"><span class="pulse" aria-hidden="true"></span> зареждам…</p>';
+  }
+  function dokAllHtml() {
+    if (!DOK.all) return dokMsg(DOK.allSt, DOK.allErr);
+    var b = dokBroi(DOK.all), ag = DOK.all.filter(function (r) { return r.obekt === 'ag'; }).length, sk = DOK.all.filter(function (r) { return r.obekt === 'soft'; }).length, ob = b.n - ag - sk, nn = b.nov + b.otlojen;
+    return '<p class="dok-s">' + ['Амур ' + ag, 'Скай ' + sk].concat(ob ? ['Общо ' + ob] : []).concat(['прочетени ' + b.prochet, 'само по име ' + b.samo_ime, 'не може ' + b.ne_moje, dokNp(b)]).join(' · ') + '</p>' +
+      '<div class="dok-b"><button type="button" class="btn ghost sb" data-a="dokSh" data-v="ne"' + (b.ne_moje ? '' : ' disabled') + '>Не може — защо (' + b.ne_moje + ') ›</button>' +
+      '<button type="button" class="btn ghost sb" data-a="dokSh" data-v="nov"' + (nn ? '' : ' disabled') + '>Непрочетени (' + nn + ') ›</button></div>' +
+      '<p class="small muted">Всеки файл от мейлите и Тиймс получава статус, когато лаптопът пише черновата: прочетен, само по име (чертеж, снимка, архив) или „не може“ с причината. Непрочетените (и отложените заради тавана 12 на ден) ги чете следващият пуск.</p>';
+  }
+  function dokIme(r) { return r.ime || String(r.kade || '').split('/').pop(); }
+  function dokRow(r, sDen, kr) {
+    var o = r.obekt ? (r.obekt === 'ag' ? 'Амур' : r.obekt === 'soft' ? 'Скай' : 'Общо') : '';
+    var hd = (sDen ? '' : dvDat(r.data, true) + ' · ' + (o ? o + ' · ' : '')) + '📄 ' + dokIme(r);
+    var mt = [r.podatel, r.tema ? '„' + r.tema + '“' : ''].filter(Boolean).join(' ');
+    return '<div class="dok-r"><div class="dok-h">' + esc(hd) + (r.vajen ? ' <span class="pill p-warn">важен</span>' : '') + '</div>' +
+      (mt ? '<div class="small muted">' + esc(mt) + '</div>' : '') +
+      (kr && r.status === 'prochet' && r.kratko ? '<div class="small">' + esc(r.kratko) + '</div>' : '') +
+      (r.status !== 'prochet' ? '<div class="small"><b>' + esc(DOK_ST[r.status] || r.status) + '</b>' + (r.prichina ? ' — ' + esc(r.prichina) : '') + '</div>' : '') +
+      (okOd(r.url) ? '<div class="dok-a">' + extA(r.url, 'btn ghost sb', 'Отвори ›', 'od') + '</div>' : '') + '</div>';
+  }
+  // групи по причина: „Сканиран — нечетим (5)“ …
+  function dokGrupi(rows, kr, sDen) {
+    var g = {}, red = [];
+    rows.forEach(function (r) { var k = String(r.prichina || DOK_ST[r.status] || '—').trim(); if (!g[k]) { g[k] = []; red.push(k); } g[k].push(r); });
+    red.sort(function (a, b) { return g[b].length - g[a].length; });
+    return red.map(function (k) { return '<h3 class="dok-g">' + esc(cap(k)) + ' (' + g[k].length + ')</h3>' + g[k].map(function (r) { return dokRow(r, sDen, kr); }).join(''); }).join('');
+  }
+  function dokSheet(v, live) {
+    DOK.sh = v;
+    if (!live) { dokLstLoad(v); dokAllLoad(); }
+    var x = DOK.lst[v];
+    var body = x && x.rows ? (x.rows.length ? dokGrupi(x.rows, false, false) : '<p class="grp-e">Няма.</p>') : dokMsg(x && !x.busy ? x.st : '', x && x.err);
+    if (live) { var b = sheetEl && sheetKind === 'dok' ? sheetEl.querySelector('#dokB') : null; if (b) putH(b, body); return; }
+    openSheet(v === 'ne' ? '📎 Не може — защо' : '📎 Непрочетени приложения', '<div id="dokB" class="dok-l">' + body + '</div>', 'dok');
+  }
+  // „📎 Приложенията на деня“ (от листа „Събрано до …“): същите редове само за деня, с kratko за прочетените
+  function dokDenBody() {
+    var d = S.den, rows = d ? dokOf(d) : null;
+    if (!rows) return '<p class="small muted">' + (d && DOK.den[dokKey(d)] && DOK.den[dokKey(d)].st === 'missing' ? 'Регистърът на приложенията още не е в облака.' : '<span class="pulse" aria-hidden="true"></span> зареждам…') + '</p>';
+    if (!rows.length) return '<p class="grp-e">Няма приложения за деня.</p>';
+    var ord = { nov: 0, otlojen: 1, ne_moje: 2, samo_ime: 3, prochet: 4 };
+    return rows.slice().sort(function (a, b) { return (ord[a.status] || 0) - (ord[b.status] || 0) || String(a.vreme || '').localeCompare(String(b.vreme || '')); }).map(function (r) { return dokRow(r, true, true); }).join('');
+  }
+  function openDokDen() { var d = S.den; if (!d) return; dokLoad(d); openSheet('📎 Приложенията на деня', '<div id="dokdB" class="dok-l">' + dokDenBody() + '</div>', 'dokd'); }
+  function dokDenPaint() { var b = sheetEl && sheetKind === 'dokd' ? sheetEl.querySelector('#dokdB') : null; if (b) putH(b, dokDenBody()); }
+
+  // ---- 1а [§6.9, §4.10]: мерене — САМО колко време е отворен всеки екран, докато се ползва (без паузи над 2 мин) ----
+  // SES — текущият отрязък; при смяна на екран/ден, скриване и на 10 мин → един ред metriki (≥ 5 с), kogda = краят на отрязъка
+  var SES = { v: '', den: null, ms: 0, poslDok: 0, last: Date.now(), t10: Date.now() };
+  var MER = { rows: null, st: '', at: 0, start: null, startSt: '', off: false, zatv: {} };
+  var MER_V = { pregled: 'Преглед', tablo: 'Табло', zadachi: 'Задачи', nastroiki: 'Настройки' };
+  function sesKey() { return view === 'day' ? 'pregled' : view === 'tablo' ? 'tablo' : view === 'deistviq' ? 'zadachi' : view === 'nastroiki' ? 'nastroiki' : ''; }
+  function sesAkt() { SES.poslDok = Date.now(); }
+  function sesTick() {
+    var n = Date.now(), dt = n - SES.last, k = sesKey(), dn = k === 'pregled' && S.den ? S.den.id : null;
+    SES.last = n;
+    if (k !== SES.v || dn !== SES.den) { sesFlush(); SES.v = k; SES.den = dn; }
+    else if (k && !document.hidden && dt > 0 && n - SES.poslDok <= 120000) SES.ms += Math.min(dt, 2000);
+    if (n - SES.t10 >= 600000) { SES.t10 = n; sesFlush(); }
+  }
+  function sesFlush() {
+    if (SES.ms >= 5000 && SES.v && !MER.off) {
+      var row = { vid: 'aktivno_' + SES.v + '_sek', stoinost: Math.min(Math.round(SES.ms / 1000), 3600), den_id: SES.v === 'pregled' ? SES.den : null, kogda: nowIso() };
+      enqueue('metriki', row);   // не през send(): мерилото не бива да затваря чакащо „Отмени“ (commitUndos)
+      if (MER.rows) MER.rows.push({ vid: row.vid, stoinost: row.stoinost, kogda: row.kogda });
+      if (!offNow()) flush(true);
+    }
+    SES.ms = 0;
+  }
+  ['pointerdown', 'touchstart', 'keydown', 'wheel'].forEach(function (ev) { document.addEventListener(ev, sesAkt, { passive: true, capture: true }); });
+  window.addEventListener('scroll', sesAkt, { passive: true });
+  setInterval(sesTick, 1000);
+  function merLoad(force) {
+    if (MER.busy || (!force && MER.rows && Date.now() - MER.at < 120000)) return;
+    if (offNow() || !api || (!DEMO && (!db || !user))) { if (!MER.rows) MER.st = 'net'; return; }
+    MER.busy = true;
+    var ot = new Date(nowMs() - 8 * 864e5).toISOString();
+    api.vremeSedm(ot).then(function (rows) { MER.busy = false; MER.rows = rows || []; MER.st = 'ok'; MER.at = Date.now(); if (view === 'nastroiki') renderNastroiki(); },
+      function (e) { MER.busy = false; MER.st = isMissing(e) || isNoCol(e) ? 'missing' : 'err'; MER.at = Date.now(); if (view === 'nastroiki') renderNastroiki(); });
+  }
+  // началото на седмицата на изходното мерене = първият ред aktivno_* (публикуването на 1а); няма → днес [§6.9, §8 т.6]
+  function merStartLoad() {
+    if (MER.startSt || offNow() || !api || (!DEMO && (!db || !user))) return;
+    MER.startSt = 'load';
+    api.merStart().then(function (r) { var x = Array.isArray(r) && r[0] ? new Date(r[0].kogda) : null; MER.start = x && !isNaN(x) ? ymd(x) : ymd(now()); MER.startSt = 'ok'; renderIzvan(); },
+      function (e) { MER.startSt = isNet(e) || isAuth(e) ? '' : 'err'; });   // отказ/грешка → без картата до следващото отваряне (без порой от заявки)
+  }
+  function merSedmica() {
+    if (!MER.start) return false;
+    var s = parseD(MER.start), e = new Date(s.getFullYear(), s.getMonth(), s.getDate() + 6), t = ymd(now());
+    return t >= MER.start && t <= ymd(e);
+  }
+  function merDni() {
+    var by = {};
+    function put(dkey, vid, st, kogda) {
+      var x = by[dkey] || (by[dkey] = { a: {}, sum: 0, iz: {} });
+      var m = /^aktivno_(\w+)_sek$/.exec(vid), z = /^izvan_(\w+)_min$/.exec(vid);
+      if (m) { x.a[m[1]] = (x.a[m[1]] || 0) + (+st || 0); x.sum += +st || 0; }
+      else if (z) { if (!x.iz[z[1]] || kogda > x.iz[z[1]].k) x.iz[z[1]] = { v: +st || 0, k: kogda }; }
+    }
+    (MER.rows || []).forEach(function (r) { var d = new Date(r.kogda); if (!isNaN(d)) put(ymd(d), r.vid, r.stoinost, r.kogda); });
+    if (SES.v && SES.ms >= 1000) put(ymd(now()), 'aktivno_' + SES.v + '_sek', Math.round(SES.ms / 1000), nowIso());   // текущият отрязък
+    return by;
+  }
+  function mn(sec) { return Math.round((sec || 0) / 60); }
+  function merHtml() {
+    if (MER.off) return '<p class="small muted">Мерилото още не е готово в базата (лаптопът я обновява).</p>';
+    if (!MER.rows) return MER.st === 'net' ? '<p class="small muted">📴 Когато има покритие.</p>' : MER.st === 'missing' || MER.st === 'err' ? '<p class="small muted">Не се зареди — опитай по-късно.</p>' : '<p class="small muted"><span class="pulse" aria-hidden="true"></span> зареждам…</p>';
+    var by = merDni(), t = ymd(now()), x = by[t] || { a: {}, sum: 0, iz: {} }, ot = ymd(new Date(nowMs() - 6 * 864e5));
+    var dnes = 'Днес: ' + mn(x.sum) + ' мин' + ['pregled', 'tablo', 'zadachi', 'nastroiki'].filter(function (k) { return x.a[k] >= 30; }).map(function (k) { return ' · ' + MER_V[k] + ' ' + mn(x.a[k]); }).join('');
+    var dni = Object.keys(by).filter(function (k) { return k >= ot && k <= t && by[k].sum > 0; }), sum = 0, pr = 0;
+    dni.forEach(function (k) { sum += by[k].sum; if (by[k].a.pregled) pr++; });
+    // ръчните числа: средното за всеки вид — по дните, в които е попълнен (празното поле не е 0)
+    var izd = Object.keys(by).filter(function (k) { return k >= ot && k <= t && Object.keys(by[k].iz).length; }), iz = { intranet: 0, poshta: 0, dokladi: 0 }, izn = { intranet: 0, poshta: 0, dokladi: 0 };
+    izd.forEach(function (k) { Object.keys(iz).forEach(function (z) { if (by[k].iz[z]) { iz[z] += by[k].iz[z].v; izn[z]++; } }); });
+    Object.keys(iz).forEach(function (z) { iz[z] = izn[z] ? iz[z] / izn[z] : 0; });
+    var n = izd.length;
+    return '<p class="mer-1"><b>' + esc(dnes) + '</b></p>' +
+      '<p class="mer-2">' + (dni.length ? 'Последните 7 дни: средно ' + mn(sum / dni.length) + ' мин на ден (' + pr + ' ' + pl(pr, 'ден', 'дни') + ' с преглед)' : 'Последните 7 дни: още няма измерено.') + '</p>' +
+      (n ? '<p class="mer-2">Извън AiLab (по твоите числа): средно Интранет ' + Math.round(iz.intranet) + ' · мейли ' + Math.round(iz.poshta) + ' · доклади ' + Math.round(iz.dokladi) + ' мин на ден (' + n + ' ' + pl(n, 'ден', 'дни') + ')</p>' : '') +
+      '<p class="small muted">Мери се само колко време екранът е отворен, докато го ползваш (без паузи над 2 минути). Нищо друго не се записва.</p>';
+  }
+  // „⏱ Днес извън AiLab“ — тиха карта в Таблото: само в седмицата на мерене, след 18:00, ако не е записана/отказана за деня
+  function izvanKey() { return 'ailab-izvan-' + ymd(now()); }
+  function izvanZatv() { var k = izvanKey(); if (MER.zatv[k]) return true; try { return !!lget(k); } catch (e) { return false; } }
+  function izvanVidim() {
+    if (MER.off || izvanZatv()) return false;
+    if (DEMO && D && D.izvanForce) return true;
+    if (!MER.start) { merStartLoad(); return false; }
+    return merSedmica() && minOf(now()) >= 18 * 60;
+  }
+  function renderIzvan() {
+    var el = box('#tb-izvan'); if (!el) return;
+    if (!izvanVidim()) { el.innerHTML = ''; return; }
+    el.innerHTML = '<section class="izv" aria-label="Днес извън AiLab"><h2>⏱ Днес извън AiLab <span class="muted">(по желание, ≈ 10 с)</span></h2>' +
+      '<p class="small muted">Колко минути днес отидоха за тези неща — за седмицата на изходното мерене. Празно поле — нищо не се записва.</p>' +
+      '<div class="izv-f">' + [['intranet', 'Интранет'], ['poshta', 'Мейли'], ['dokladi', 'Доклади']].map(function (z) {
+        return '<label class="izv-l"><span>' + z[1] + '</span><input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="3" id="izv-' + z[0] + '" aria-label="' + z[1] + ', минути" placeholder="мин"></label>';
+      }).join('') + '</div><div class="err" id="izvE" hidden></div>' +
+      '<div class="izv-b"><button type="button" class="btn" data-a="izvanSave">Запиши</button><button type="button" class="btn ghost" data-a="izvanNe">Не днес</button></div></section>';
+  }
+  function izvanZatvori() { var k = izvanKey(); MER.zatv[k] = true; lset(k, '1'); if (D) D.izvanForce = false; renderIzvan(); }
+  function izvanSave() {
+    var vals = {}, bad = false, ee = $('#izvE');
+    ['intranet', 'poshta', 'dokladi'].forEach(function (z) {
+      var i = $('#izv-' + z), v = i ? String(i.value || '').trim() : '';
+      if (!v) return;
+      if (!/^\d{1,3}$/.test(v) || +v > 600) { bad = true; return; }
+      vals[z] = +v;
+    });
+    if (bad) { if (ee) { ee.textContent = 'Само цели минути от 0 до 600.'; ee.hidden = false; } return; }
+    var ks = Object.keys(vals);
+    if (!ks.length) { if (ee) { ee.textContent = 'Попълни поне едно число — или „Не днес“.'; ee.hidden = false; } return; }
+    var n = now(), kg = new Date(n.getFullYear(), n.getMonth(), n.getDate(), 12, 0, 0).toISOString();   // 12:00 на деня — редът е за деня
+    ks.forEach(function (z) {
+      var row = { vid: 'izvan_' + z + '_min', stoinost: vals[z], den_id: null, kogda: kg };
+      enqueue('metriki', row); if (MER.rows) MER.rows.push({ vid: row.vid, stoinost: row.stoinost, kogda: kg });
+    });
+    if (!offNow()) flush(true);
+    izvanZatvori();
+    toast('Записано — благодаря');
   }
 
   // ---------- Етап 6 [§5.6, F8]: без чакане след действие — „Отмени“ в ЕДНА лента долу ~5 с (правило 8) ----------
@@ -1783,7 +2452,7 @@
   // ✓ Отговорено (решение, всеки ден — вписаният запис не се пипа) · ✓ Вярно (незаключен ден) · ✓ Видях (само на телефона) [§5.2]
   function pcOk(tid) {
     var t = findT(tid), d = S.den; if (!t || !d) return;
-    if (newPending()) { toast('Има нова версия — натисни „Презареди“ първо.', 'bad'); return; }
+    if (newPending()) { toast('Има нова версия — натисни „Покажи новата версия“ първо.', 'bad'); return; }
     var res = t.grupa === 'reshenie';
     if (!res && (locked() || t.istina === 'provereno')) { pcSeen(tid); return; }
     if (mine(tid).ok) return;   // вече е потвърдено (и задържаното в опашката)
@@ -1799,7 +2468,7 @@
   // 📘 ⇄ 🚫 — пише 'izkljuchi' / 'vkljuchi' в resheniq (тригерът в базата сменя tochki.v_dnevnika веднага) [007]
   function pcDn(tid) {
     var t = findT(tid), d = S.den; if (!t || !d || !dnMozhe(t)) return;
-    if (newPending()) { toast('Има нова версия — натисни „Презареди“ първо.', 'bad'); return; }
+    if (newPending()) { toast('Има нова версия — натисни „Покажи новата версия“ първо.', 'bad'); return; }
     if (locked()) { dnLkToast(); return; }
     var vk = !vDn(t);   // сега е изключена → връщам я
     var row = { den_id: d.id, tochka_id: tid, vid: vk ? 'vkljuchi' : 'izkljuchi', versiq: d.versiq, hesh: d.hesh || null, ustroistvo: device() };
@@ -1839,7 +2508,7 @@
   // изборът ми не е приложен от базата (тригерът) → кехлибарен ред, не тих пил [§6.1 т.8, К1, К2]
   function dnNeHtml(ne) {
     return '<p class="dn-ne">' + (ne.vid === 'vkljuchi' ? '📘' : '🚫') + ' не е приложено — ' + esc(ne.why) +
-      (/няма я/.test(ne.why) ? ' · <button type="button" class="lnk" data-a="reload">Презареди и избери пак</button>' : '') + '</p>';
+      (/няма я/.test(ne.why) ? ' · <button type="button" class="lnk" data-a="reload">Покажи новата версия и избери пак</button>' : '') + '</p>';
   }
   // ---- „Пълен запис“: тап на ред → лист „От кои точки е този ред“ [§6.1 т.1] ----
   var MK = null;   // {ks}
@@ -1892,7 +2561,7 @@
         '<button type="button" role="radio" data-a="pyMode" data-m="popravka" aria-checked="' + (mode === 'popravka') + '"' + (lk ? ' disabled' : '') + '><b>Поправка</b><span>нещо е грешно</span></button>' +
         '<button type="button" role="radio" data-a="pyMode" data-m="komentar" aria-checked="' + (mode === 'komentar') + '"><b>Разяснение</b><span>добавям контекст</span></button></div>' +
       (lk === 'lk' ? '<p class="warnline">Денят е одобрен — поправка вече не влиза в записа. Разяснението се пази в AiLab към точката.</p>'
-        : lk === 'nova' ? '<p class="warnline">Има нова версия — поправка се пише само към показаната. Презареди за поправка; разяснението се пази към точката.</p>' : '') +
+        : lk === 'nova' ? '<p class="warnline">Има нова версия — поправка се пише само към показаната. Натисни „Покажи новата версия“ за поправка; разяснението се пази към точката.</p>' : '') +
       '<label class="fld"><span id="pyL">' + (mode === 'popravka' ? 'Как е правилно?' : 'Разяснение') + '</span>' +
         '<textarea id="pyT" rows="4" maxlength="1000" autofocus enterkeyhint="done" placeholder="' + (mode === 'popravka' ? 'напр. кофражистите са 10 — двама още не са в Присъствия' : 'напр. уговорено е по телефона — чакаме писмото') + '">' + esc(text || '') + '</textarea></label>' +
       '<div class="cnt250" id="pyC" aria-live="polite"></div>' +
@@ -1971,9 +2640,13 @@
     if (d && d.saob) saobPut(d.saob, null, true);
   }
   // техническият път (s.kade, напр. „Оригинали/065412_…json“) не се показва — за РП е шум; името на файл излиза в реда 📎 отдолу
+  // 1а [§4.4, §4.5]: „от ДД.ММ“ — източник от друг ден (закъснелите); „Метео“ — модел за града, без „Отвори“
+  function srcDen(s) { return s && /^\d{4}-\d{2}-\d{2}$/.test(String(s.den || '')) ? ' от ' + dvDat(s.den, true) : ''; }
   function srcItem(s) {
+    if (kanalOf(s.tip) === 'meteo') return '<div class="src-i"><span class="ref">' + esc(s.n) + '</span><div><div class="src-t">🌡️ <b>' + esc(s.kratko || 'Метео') + '</b> — модел за града, не измерване на обекта' +
+      (s.vreme ? ' · <span class="mono">' + esc(s.vreme) + '</span>' : '') + '</div></div></div>';
     return '<div class="src-i"><span class="ref">' + esc(s.n) + '</span><div><div class="src-t">' + tipEmo(s.tip) + ' <b>' + esc(s.tip || 'източник') + '</b>' +
-      (s.vreme ? ' · <span class="mono">' + esc(s.vreme) + '</span>' : '') + '</div><div>' + esc(s.kratko || '') + '</div></div></div>';
+      (s.vreme ? ' · <span class="mono">' + esc(s.vreme) + '</span>' : '') + esc(srcDen(s)) + '</div><div>' + esc(s.kratko || '') + '</div></div></div>';
   }
   // t — точката; den/o — денят и обектът ѝ (от Преглед или от Таблото). Една заявка М1 за всички източници.
   // Същото съдържание и в панела „Избрана точка“ на широк екран (SRC.el = панелът, не листът) [§6.2]
@@ -2022,14 +2695,14 @@
   }
   function renderPan(force) {
     var el = $('#panT'); if (!el || !WIDE) return;
-    var t = panPoint(), key = t && S.den ? t.id + ':' + S.den.versiq + ':' + t.istina : '';
+    var t = panPoint(), key = t && S.den ? t.id + ':' + S.den.versiq + ':' + t.istina + ':' + (prdOf(t) && !vrazkaNe(t) ? 1 : 0) : '';
     if (!force && el._k === key) { panPhFill(); return; }
     el._k = key; el._h = null;
     if (!t) { el.innerHTML = '<div class="pan-c"><p class="grp-e">Няма точки за този ден — само „📄 Пълен запис“.</p></div>'; return; }
     var G = GRUPI.filter(function (x) { return x.k === t.grupa; })[0], ist = ISTINA[t.istina] || ISTINA.saobshteno, izv = t.izvori || [], hot = (t.vajnost || 1) >= 3;
     el.innerHTML = '<div class="pan-c g-' + esc(t.grupa) + '"><div class="pan-h"><span class="pan-l">Избрана точка</span>' + (G ? '<span class="pan-g">' + esc(G.t) + '</span>' : '') + '</div>' +
-      '<div class="pan-t"><span class="pc-e" aria-hidden="true">' + emoT(t) + '</span><p>' + esc(t.tekst) + '</p></div>' +
-      '<div class="pan-p"><span class="pill ' + ist[1] + '">' + ist[0] + '</span>' + (hot ? '<span class="pill p-bad">⚠️ важно</span>' : '') + '</div>' +
+      '<div class="pan-t"><span class="pc-e" aria-hidden="true">' + emoT(t) + '</span><p>' + esc(t.tekst) + '</p></div>' + prdHtml(t) +
+      '<div class="pan-p">' + verPills(t) + '<span class="pill ' + ist[1] + '">' + ist[0] + '</span>' + (hot ? '<span class="pill p-bad">⚠️ важно</span>' : '') + '</div>' +
       '<div id="panPh"></div>' +
       // Етап 6 [§5.4]: „✉ Питай“ и „→ Задача“ и от панела „Избрана точка“
       '<div class="pan-a"><button type="button" class="btn ghost sb" data-a="pitaiT" data-tid="' + esc(t.id) + '">✉ Питай по мейл</button>' +
@@ -2111,10 +2784,11 @@
   function hm(iso) { var d = new Date(iso); return isNaN(d) ? '' : hhmm(d); }
   function srcParts(s, i, x) {
     var k = srcKey(s), f = srcFile(s), r = k ? saobPick(k, x.den) : null, ref = '<span class="ref">' + esc(s.n) + '</span>';
+    if (kanalOf(s.tip) === 'meteo') return [srcItem(s), ''];   // 1а [§4.5]: времето — само редът, без „Отвори“ и без „Поискай информация“
     if (r) {
-      var mail = r.vid === 'mail';
-      var hd = mail ? '✉️ Мейл · ' + hm(r.vreme) + (r.avtor ? ' · ' + r.avtor : '')
-        : '💬 ' + (r.izvor_vid === 'kanal' ? 'Тиймс канал' : 'Тиймс чат') + ' · ' + hm(r.vreme) + (r.avtor ? ' · ' + r.avtor : '') + (r.izvor ? ' · „' + r.izvor + '“' : '');
+      var mail = r.vid === 'mail', od = srcDen(s);
+      var hd = mail ? '✉️ Мейл · ' + hm(r.vreme) + od + (r.avtor ? ' · ' + r.avtor : '')
+        : '💬 ' + (r.izvor_vid === 'kanal' ? 'Тиймс канал' : 'Тиймс чат') + ' · ' + hm(r.vreme) + od + (r.avtor ? ' · ' + r.avtor : '') + (r.izvor ? ' · „' + r.izvor + '“' : '');
       var h = '<div class="src-hd">' + ref + '<span>' + esc(hd) + '</span></div>';
       if (r.otgovor) h += '<div class="src-ot">' + esc(r.otgovor) + '</div>';
       if (mail) { if (r.tema) h += '<div class="src-tm">Тема: <b>' + esc(r.tema) + '</b></div>'; if (r.do_kopie) h += '<div class="src-dk">' + esc(r.do_kopie) + '</div>'; }
@@ -2234,7 +2908,7 @@
     if (!force && (x.k || x.kSt === 'missing' || ((x.kSt === 'net' || x.kSt === 'err') && Date.now() - x.kAt < 30000))) return;
     if (offNow() || !api || (!DEMO && (!db || !user))) { if (!x.k) x.kSt = 'net'; x.kAt = Date.now(); return; }
     var tok = ++x.kTok; x.kSt = 'load'; x.kErr = null;
-    (x.mode === 'dnes' ? api.saobDnesK(x.o, x.data) : api.saobDenK(x.den)).then(function (rows) {
+    (x.mode === 'dnes' ? api.saobDnesK(x.o, x.data, !!x.vse) : api.saobDenK(x.den)).then(function (rows) {
       if (tok !== x.kTok) return;
       x.k = rows || []; x.kSt = 'ok'; x.kAt = Date.now(); iztPaint(x);
     }, function (e) {
@@ -2304,7 +2978,7 @@
   }
   function iztBody(x) {
     var u = iztUsed(x), h = '';
-    if (x.k && !x.k.length && x.mode === 'den' && iztRecent(x)) h += '<p class="izt-e">Съобщенията за деня идват със сутрешния пуск.</p>';
+    if (x.k && !x.k.length && x.mode === 'den' && iztRecent(x)) h += '<p class="izt-e">Черновата за деня се пише в 19:00.</p>';
     return h + iztBlock(x, 'teams', u) + iztBlock(x, 'mail', u) + iztBlockIz(x, u) + iztPrisRow(x);
   }
   function iztHdr(x, b, lbl, on, off) {
@@ -2362,7 +3036,7 @@
       return '<button type="button" class="iz6-go" data-a="iztGo" data-tid="' + esc(t.id) + '">→ влязло в: „' + esc(clip(t.tekst, 60)) + '“' + (vDn(t) ? '' : ' (не влиза в дневника)') + ' ›</button>';
     }).join('');
     if (info) return '';
-    if (ds && ds.st === 'pend') return '<p class="iz6-p">⏳ ще се добави в този ден със сутрешния пуск (09:00) — после одобряваш новата версия</p>';
+    if (ds && ds.st === 'pend') return '<p class="iz6-p">⏳ ще се добави в този ден със следващата версия' + (d && d.id === x.den ? ' (' + esc(slednaV(d)) + ')' : '') + ' — после одобряваш нея</p>';
     if (ds && ds.st === 'err') return '<button type="button" class="iz6-p warn" data-a="qerr">⚠️ не се записа — виж</button>';
     if (ds && ds.st === 'ne') return '<p class="iz6-p ne">✕ ' + esc(ds.rez) + '</p>';
     if (!d || d.id !== x.den) return '';
@@ -2381,7 +3055,7 @@
     if (/^(нанесено|вече е)/i.test(rz)) return { st: 'ok', k: m ? +m[1] : null };
     return { st: 'ne', rez: rz || 'не е нанесено' };
   }
-  // колко „➕“ още чакат сутрешния пуск (опашката + необработените в базата) — за листа „Одобряваш ли деня?“ [§3.1]
+  // колко „➕“ още чакат следващата версия (22:45 / 09:00) (опашката + необработените в базата) — за листа „Одобряваш ли деня?“ [§3.1]
   function dobaviCakat(den) {
     var n = 0, kl = {};
     queue().forEach(function (it) { if (it.tbl === 'resheniq' && !it.err && it.row && it.row.vid === 'dobavi' && it.row.den_id === den) { n++; if (it.row.klient_id) kl[it.row.klient_id] = 1; } });
@@ -2392,7 +3066,7 @@
   function iztDob(key) {
     var d = S.den, x = iztDen(); if (!d || !x || !key) return;
     if (locked() || d.status !== 'chernova') { dnLkToast(); return; }
-    if (newPending()) { toast('Има нова версия — натисни „Презареди“ първо.', 'bad'); return; }
+    if (newPending()) { toast('Има нова версия — натисни „Покажи новата версия“ първо.', 'bad'); return; }
     if (dobState(d.id, key)) return;
     var tt, m = /^iz:(\d+)$/.exec(key);
     if (m) { var dv = (x.dv || []).filter(function (r) { return String(r.id) === m[1]; })[0]; tt = dv ? 'Интранет #' + dv.tid + ' · ' + dvKakvo(dv) : key; }
@@ -2426,7 +3100,7 @@
   }
   function iztDobGo(k) {
     var t = k ? findTk(+k) : null;
-    if (!t) { toast(S.newVersiq > (S.den ? S.den.versiq : 0) ? 'Точката е в новата версия — натисни „Презареди“.' : 'Точката я няма в тази версия.'); return; }
+    if (!t) { toast(S.newVersiq > (S.den ? S.den.versiq : 0) ? 'Точката е в новата версия — натисни „Покажи новата версия“.' : 'Точката я няма в тази версия.'); return; }
     iztGo(t.id);
   }
   // Интранет: „#7888 · описание“ / „статус: Текуща → Завършена · между 12:03 и 14:05“ [§3.2, §5.2]
@@ -2499,7 +3173,9 @@
   }
 
   // ---------- Етап 6 [§5.14, F12]: „📥 Днес досега“ на Таблото — съобщенията на днешния ден преди черновата (по обект + дата) ----------
-  function dnesX(o) { var d = ymd(now()); return iztX('n:' + o + ':' + d, { mode: 'dnes', den: null, o: o, data: d }); }
+  // 1а [§6.1, §6.10]: днешният ден вече има чернова (19:00) → всички съобщения на деня (ключът е друг — „:v“), картата казва „черновата vN е готова ›“
+  function dnesDen(o) { var t = ymd(now()); return TB.dni.concat(S.dni).filter(function (x) { return x.data === t && (x.obekt || OBEKT_KOD) === o; })[0] || null; }
+  function dnesX(o) { var d = ymd(now()), dn = dnesDen(o); return iztX('n:' + o + ':' + d + (dn ? ':v' : ''), { mode: 'dnes', den: null, o: o, data: d, vse: !!dn }); }
   function dnesLoad() { ['ag', 'soft'].forEach(function (o) { var x = dnesX(o); if (!x.k || Date.now() - x.kAt > 60000) iztKLoad(x, true); }); }
   function renderDnes() {
     var el = box('#tb-dnes'); if (!el) return;
@@ -2507,13 +3183,18 @@
     var sv = ['teams', 'poshta'].map(svOf).filter(Boolean).map(function (s) { return Date.parse(s.posledno); }).filter(function (t) { return !isNaN(t); });
     var ob = sv.length ? rel(new Date(Math.max.apply(null, sv)).toISOString()) : '—';
     el.innerHTML = os.map(function (o) {
-      var x = dnesX(o), k = x.k;
+      var x = dnesX(o), k = x.k, dn = dnesDen(o);
       if (!k && (x.kSt === 'missing' || (x.kSt === 'net' && offNow()))) return '';
       var nt = k ? k.filter(function (r) { return r.vid === 'teams'; }).length : null, nm = k ? k.filter(function (r) { return r.vid === 'mail'; }).length : null;
-      return '<button type="button" class="dnes o-' + o + '" data-a="dnesOpen" data-o="' + o + '" aria-label="' + esc('Днес досега, ' + OBEKT[o][0] + ': Тиймс ' + (nt == null ? '—' : nt) + ', мейли ' + (nm == null ? '—' : nm) + ', обновено ' + ob) + '">' +
+      var b = '<button type="button" class="dnes o-' + o + '" data-a="dnesOpen" data-o="' + o + '" aria-label="' + esc('Днес досега, ' + OBEKT[o][0] + ': Тиймс ' + (nt == null ? '—' : nt) + ', мейли ' + (nm == null ? '—' : nm) + ', обновено ' + ob) + '">' +
         '<span class="ochip o-' + o + '">' + SELK[o] + '</span><span class="dnes-t">📥 Днес досега: 💬 ' + (nt == null ? '…' : nt) + ' · ✉️ ' + (nm == null ? '…' : nm) +
         ' · <span class="muted">обновено ' + esc(ob) + '</span></span><span class="dnes-go" aria-hidden="true">›</span></button>';
+      return dn ? '<div class="dnes-w">' + b + '<button type="button" class="dnes-ch o-' + o + '" data-a="dnesDen" data-o="' + o + '" data-id="' + esc(dn.id) + '">· черновата v' + esc(dn.versiq) + ' е готова ›</button></div>' : b;
     }).join('');
+  }
+  function dnesZt() {
+    var m = minOf(now());
+    return m < 19 * 60 ? 'В 19:00 това влиза в черновата на деня.' : m < 22 * 60 + 45 ? 'Новото след черновата влиза в обновяването в 22:45.' : 'Новото влиза в сутрешната добавка (09:00), ако не си одобрил.';
   }
   function openDnes(o) {
     if (o !== 'ag' && o !== 'soft') return;
@@ -2521,7 +3202,7 @@
     IZTS = x.key;
     x.open.teams = x.open.teams !== false; x.open.mail = x.open.mail !== false;   // в листа — разгънати
     iztKLoad(x, true);
-    openSheet('📥 Днес досега · ' + OBEKT[o][0], '<p class="small muted izt-zt">Утре в 09:00 това ще влезе в черновата.</p><div id="iztS" class="izt sh">' + iztBody(x) + '</div>', 'izt');
+    openSheet('📥 Днес досега · ' + OBEKT[o][0], '<p class="small muted izt-zt">' + esc(dnesZt()) + '</p><div id="iztS" class="izt sh">' + iztBody(x) + '</div>', 'izt');
   }
   function iztSheetPaint() { var x = IZTS && IZ6[IZTS], b = sheetEl && sheetKind === 'izt' ? sheetEl.querySelector('#iztS') : null; if (x && b) putH(b, iztBody(x)); }
   function iztPitai(xk, id) {
@@ -2532,11 +3213,13 @@
   // ---------- Етап 6 [§5.9, F6]: „Как се прави дневникът“ — карта в Настройки и същото в лист от ⓘ ----------
   var KAK_DN = [
     ['Какво влиза в дневника.', '„📄 Пълен запис“ е точно това, което отива в Word. Всяка карта е един или няколко реда в него. Карта с „🚫 Не включвай“ не влиза. Празен раздел не се пише изобщо.'],
-    ['Как се пише всяка сутрин (09:00).', 'Лаптопът събира вчерашния ден: Тиймс, мейлите и приложенията им, Присъствия, Интранета, снимките. После три помощника: първият пише черновата и резюмето, вторият я проверява ред по ред срещу съобщенията, третият поправя това, което проверителят е намерил. Черновата идва тук; ти я преглеждаш и натискаш „Одобрявам“ — лаптопът я вписва в Word.'],
+    // 1а [§6.10]: Решение 1 на РП (19.10, „В“) — точният текст от спецификацията
+    ['Кога се пише.', 'В 19:00 лаптопът събира днешния ден (Тиймс, мейлите и приложенията им, Присъствия, Интранета, времето) и пише черновата: първият помощник пише, вторият проверява ред по ред, третият поправя. В 22:45 само я обновява с новото след 19:00 (обикновено Присъствията на Амур и късни мейли) — номерата на точките и твоите отговори остават. В 09:00 на другия ден: ако за вчера е дошло още нещо и още не си одобрил — малка добавка. Ако си одобрил с „Одобри и добави …“, късните неща и твоите поправки, пратени точно преди одобрението, влизат в следващата чернова като „Закъснели за …“ / „Поправка към записа за …“. Лаптопът трябва да е включен вечер; ако е изключен, черновата тръгва, щом се включи (до 22:45 — същата вечер; иначе на сутринта само ако има нещо ново).'],
     ['Резюмето.', 'В Word раздел 1 „Управленско резюме“ е няколко кратки реда с най-важното от деня (пари, срокове, инвеститор, безопасност, спиране на работа). Всеки ред идва от картите под него — махнеш ли карта с „🚫“, махаш и реда ѝ в резюмето. Горе на деня в AiLab има и 1–2 изречения само за теб — те не отиват в Word.'],
     ['Интранетът.', 'Движението по задачите за обекта влиза в раздел 7 „Задачи и срокове“: завършена задача, сменен срок, отговорник или статус — всяко на свой кратък ред, който можеш да махнеш поотделно; новите задачи — един общ ред с номерата им (важната нова задача — на свой ред). Най-много 8 реда на ден; пълният списък е в „🗂️ Източниците на деня“ › Интранет. Коментарите в Интранета AiLab не ги вижда.'],
-    ['Какво НЕ влиза.', 'Поздрави, „ок“, уточнения без нов факт, повторения; съобщения, които не са станали точка. Виж ги в „🗂️ Източниците на деня“ — ако нещо липсва, „➕ Включи в дневника“: сутрешният пуск (09:00) го добавя в същия ден като нова версия. Не одобрявай деня преди това — иначе няма да влезе.'],
-    ['Броят хора', 'е нетото от Присъствия. Ако там няма запис — по сутрешния рапорт.']
+    ['Какво НЕ влиза.', 'Поздрави, „ок“, уточнения без нов факт, повторения; съобщения, които не са станали точка. Виж ги в „🗂️ Източниците на деня“ — ако нещо липсва, „➕ Включи в дневника“: следващата версия (22:45 или 09:00) го добавя в същия ден като нова версия. Не одобрявай деня преди това — иначе няма да влезе.'],
+    ['Броят хора', 'е нетото от Присъствия. Ако там няма запис — по сутрешния рапорт.'],
+    ['Времето', 'в раздел 2 е от Open-Meteo — модел за града на обекта, не измерване на площадката.']
   ];
   function kakDnHtml() { return '<div class="kak-dn">' + KAK_DN.map(function (p) { return '<p><b>' + esc(p[0]) + '</b> ' + esc(p[1]) + '</p>'; }).join('') + '</div>'; }
   function openKakDn() { openSheet('Как се прави дневникът', kakDnHtml(), 'kak'); }
@@ -2773,11 +3456,24 @@
     var list = sortSv(S.svezhest), sp = svSpi();
     // лаптопът спи → един сив ред горе; кехлибарено само застарялото преди заспиването, останалите — с часа си, без ⚠️ [§5.7]
     return (sp.spi && list.length ? '<p class="fr-sleep">' + esc(spiTxt(sp)) + '</p>' : '') + (list.length ? list.map(function (s) {
-      var old = svWarn(s, sp), nm = IZ[s.izvor] || [s.izvor, '•'];
-      var p = old ? '<span class="pill p-warn">⚠️ ' + (s.ok === false ? 'грешка при събиране' : 'застарял') + '</span>'
-        : sp.spi ? (s.izvor === 'laptop' ? '<span class="pill p-neutral">💤 спи</span>' : '') : '<span class="pill p-ok">✓ свеж</span>';
-      return '<div class="fr-i ' + (old ? 'old' : sp.spi ? 'calm' : 'ok') + '"><span class="fr-e" aria-hidden="true">' + nm[1] + '</span><div><div><b>' + esc(nm[0]) + '</b> ' + p + '</div>' +
-        '<div class="small muted">последно: <span class="mono">' + esc(s.posledno ? dm(s.posledno) : '—') + '</span>' + (s.broi != null ? ' · ' + esc(s.broi) + ' записа' : '') + '</div>' +
+      var old = svWarn(s, sp), nm = IZ[s.izvor] || [s.izvor, '•'], p, cls, ime = esc(nm[0]), br = s.broi != null ? ' · ' + esc(s.broi) + ' записа' : '';
+      if (s.izvor === 'disk') {   // 1а [§4.7, §6.7]: по нивото, не по часа
+        var dl = diskLvl(s); old = dl > 0; br = '';
+        ime = 'C: ' + (s.broi != null ? esc(Math.floor(+s.broi)) + ' GB' : '—');
+        p = dl === 2 ? '<span class="pill p-bad">⚠️ под 8 GB — освободи място</span>' : dl === 1 ? '<span class="pill p-warn">⚠️ под 15 GB</span>' : '<span class="pill p-ok">✓</span>';
+        cls = dl === 2 ? 'old bad' : dl === 1 ? 'old' : 'ok';
+      } else if (s.izvor === 'chernova' || s.izvor === 'prilojeniq') {   // кехлибарено само при ok = false; „чака отворен Outlook“ — неутрално
+        old = s.ok === false; br = s.izvor === 'prilojeniq' && s.broi != null ? ' · днес свалени ' + esc(s.broi) : '';
+        p = old ? '<span class="pill p-warn">⚠️ ' + (s.izvor === 'chernova' ? 'внимание' : 'грешка при сваляне') + '</span>'
+          : s.izvor === 'chernova' && +s.broi === 1 ? '<span class="pill p-neutral">⏳ тече</span>' : '<span class="pill p-neutral">✓</span>';
+        cls = old ? 'old' : 'calm';
+      } else {
+        p = old ? '<span class="pill p-warn">⚠️ ' + (s.ok === false ? 'грешка при събиране' : 'застарял') + '</span>'
+          : sp.spi ? (s.izvor === 'laptop' ? '<span class="pill p-neutral">💤 спи</span>' : '') : '<span class="pill p-ok">✓ свеж</span>';
+        cls = old ? 'old' : sp.spi ? 'calm' : 'ok';
+      }
+      return '<div class="fr-i ' + cls + '"><span class="fr-e" aria-hidden="true">' + nm[1] + '</span><div><div><b>' + ime + '</b> ' + p + '</div>' +
+        '<div class="small muted">последно: <span class="mono">' + esc(s.posledno ? dm(s.posledno) : '—') + '</span>' + br + '</div>' +
         (s.belejka ? '<div class="small">' + esc(s.belejka) + '</div>' : '') + '</div></div>';
     }).join('') : '<p>Лаптопът още не е пратил данни за свежестта на източниците.</p>');
   }
@@ -3504,7 +4200,8 @@
   function renderBanners() {
     var el = $('#banners'); if (!el) return;
     var h = '', live = view === 'day' || view === 'tablo' || view === 'deistviq' || view === 'nastroiki';
-    if (view === 'day' && S.den && S.newVersiq > S.den.versiq) h += '<div class="bn bn-new"><span>Има нова версия (v ' + esc(S.newVersiq) + ')</span><button type="button" class="bn-b" data-a="reload">Презареди</button></div>';
+    // 1а [§6.4]: един текст навсякъде (лентата, тостът, листът, долу) — „отговорите ти са запазени“
+    if (view === 'day' && S.den && S.newVersiq > S.den.versiq) h += '<div class="bn bn-new"><span>' + esc(nvTxt()) + '</span><button type="button" class="bn-b" data-a="reload">Покажи новата версия</button></div>';
     if ((S.offline || S.forceOff) && live) {
       var at = view === 'tablo' ? TB.at : view === 'day' ? S.dataAt : (S.actsAt || TB.at);
       var old = !at || nowMs() - Date.parse(at) > 12 * 36e5;   // Таблото/Действия: кехлибарено чак когато запазеното е > 12 ч
@@ -3518,7 +4215,7 @@
   }
   // Записи, които базата отказа: текстът на РП стои тук, докато той не реши — „Опитай пак“ или „Махни“.
   var QVID = { odobri: 'Одобрение на деня', potvardi: 'Потвърждение', popravka: 'Поправка', osporva: 'Оспорване', komentar: 'Коментар',
-    izkljuchi: 'Не за дневника', vkljuchi: 'Пак в дневника', dobavi: 'Включване в дневника' };
+    izkljuchi: 'Не за дневника', vkljuchi: 'Пак в дневника', dobavi: 'Включване в дневника', vrazka_ne: 'Махната връзка' };
   function openErrSheet() {
     var list = errQ();
     if (!list.length) { closeSheet(); return; }
@@ -4216,7 +4913,7 @@
     if (o === OBEKT_KOD) return;
     stopPoll();
     OBEKT_KOD = o;
-    S.dni = []; S.counts = {}; S.den = null; S.tochki = []; S.res = []; S.newVersiq = 0; S.sig = ''; S.scrollY = 0;
+    S.dni = []; S.counts = {}; S.den = null; S.tochki = []; S.res = []; S.newVersiq = 0; S.newHead = null; S.sig = ''; S.scrollY = 0;
   }
   var MEMV = { vid: '' };   // в демо „последно гледане“ е само в паметта (часовникът на демото тръгва отначало)
   function seenRead() { return DEMO ? MEMV.vid : (lget(K2.vid) || ''); }
@@ -4323,6 +5020,7 @@
   }
   function leaveView() {
     commitUndos();
+    sesTick(); sesFlush();   // 1а [§6.9]: отрязъкът на мерилото — на екрана, който напускаме (преди смяната)
     var y = window.pageYOffset || 0;
     if (view === 'tablo') { TB.scrollY = y; seenWrite(); hidePill(); }
     else if (view === 'day') { S.scrollY = y; stopPoll(); }
@@ -4735,7 +5433,7 @@
   function buildTablo() {
     // .tb2 / .tb2-l / .tb2-r — само за широкия екран (2 колони); на телефона са display:contents → подредбата е както досега
     tablo.innerHTML = scrHead('tablo') +
-      '<div id="tb-sw"></div><div id="tb-top" class="tb-top"></div><div id="tb-fresh"></div><div id="tb-cnt" class="stats tb-cnt"></div><div id="tb-dnes" class="tb-dnes"></div>' +
+      '<div id="tb-sw"></div><div id="tb-top" class="tb-top"></div><div id="tb-fresh"></div><div id="tb-cnt" class="stats tb-cnt"></div><div id="tb-dnes" class="tb-dnes"></div><div id="tb-izvan"></div>' +
       '<div class="tb2"><div class="tb2-l">' +
       '<section class="grp g-reshenie" id="tb-open-s" aria-label="Изисква решение"><div class="grp-h"><h2>Изисква решение</h2><span class="grp-n" id="tb-open-n">…</span><span class="grp-rc" id="tb-red-resh"></span></div>' +
         '<p class="grp-s">чака теб: отговор, решение, пари или срок</p><div id="tb-open" class="tb-list"></div></section>' +
@@ -4759,7 +5457,7 @@
     if (!TB.built) buildTablo();
     if (!keep) { TB.defer = {}; hidePill(); }
     var d = TB.defer;
-    renderTbSw(); renderTbTop(); renderFresh('#tb-fresh', true); renderTabloCounts(); renderDnes(); renderTbRed();
+    renderTbSw(); renderTbTop(); renderFresh('#tb-fresh', true); renderTabloCounts(); renderDnes(); renderIzvan(); renderTbRed();
     if (!d.open) renderOpen(true);
     if (!d.chart) renderChart(true);
     if (!d.feed) renderFeed(); else renderFeedEnd();
@@ -4767,7 +5465,7 @@
   // Смяна от опашката/мрежата: числата винаги; списъкът с решенията — само ако не си скролнал надолу [К11].
   function renderTabloLive() {
     if (view !== 'tablo' || !TB.built) return;
-    renderTbSw(); renderTbTop(); renderFresh('#tb-fresh', true); renderTabloCounts(); renderDnes(); renderOpen(false); renderFeedEnd();
+    renderTbSw(); renderTbTop(); renderFresh('#tb-fresh', true); renderTabloCounts(); renderDnes(); renderIzvan(); renderOpen(false); renderFeedEnd();
   }
   function renderTbSw() {
     var el = box('#tb-sw'); if (!el) return;
@@ -4791,12 +5489,12 @@
       if (offNow() && !st.open && !st.feed) { show = false; h += offMsg(sel); }
       else if (!selRows(sel).length) {
         h += '<section class="empty"><div class="empty-e" aria-hidden="true">🌙</div><h1>Още няма качени дни за ' + esc(SELN[sel]) + '</h1>' +
-          '<p>Лаптопът качва черновата вечер (около 17:30) — тогава денят се появява тук с решенията, хората и промените.</p>' +
+          '<p>Лаптопът пише черновата на деня в 19:00 и я обновява в 22:45 — тогава денят се появява тук с решенията, хората и промените.</p>' +
           '<p class="small muted">Действията (бутонът „+“) работят и сега.</p></section>';
       }
     }
     el.innerHTML = h;
-    ['#tb-fresh', '#tb-cnt', '#tb-dnes', '#tb-open-s', '#tb-hora-s', '#tb-feed-s'].forEach(function (s) { var n = $(s); if (n && n.hidden === show) n.hidden = !show; });
+    ['#tb-fresh', '#tb-cnt', '#tb-dnes', '#tb-izvan', '#tb-open-s', '#tb-hora-s', '#tb-feed-s'].forEach(function (s) { var n = $(s); if (n && n.hidden === show) n.hidden = !show; });
   }
   function renderTabloCounts() {
     var el = box('#tb-cnt'); if (!el) return;
@@ -5099,7 +5797,7 @@
   function prisMaybe() { var s = svOf('prisystvia'), p = s ? String(s.posledno || '') : ''; if (p && p !== PRIS.sv) prisLoad(); }
   function prisPaint() {
     if (view === 'tablo' && TB.built) { if (scrolledFar() && !WIDE) TB.defer.chart = true; else renderChart(true); }
-    else if (view === 'day') { renderStrip(); keepAnchor(renderPris); }
+    else if (view === 'day') { renderStrip(); keepAnchor(renderPris); renderFresh(); if (sheetKind === 'sab') sabSheetPaint(); }   // 1а: „Събрано до“ — Присъствия
   }
   // разбивката на един ден (po_brigadi) — само при показване; паметта пази последните 30
   function prisDet(o, k, noLoad) {
@@ -5129,7 +5827,7 @@
     });
   }
   function prisDetPaint(o, k) {
-    if (view === 'day' && S.den && (S.den.obekt || OBEKT_KOD) === o && S.den.data === k) keepAnchor(renderPris);
+    if (view === 'day' && S.den && (S.den.obekt || OBEKT_KOD) === o && S.den.data === k) { keepAnchor(renderPris); renderFresh(); if (sheetKind === 'sab') sabSheetPaint(); }
     if (view === 'tablo' && TB.chart.geo) hcDetPaint(false);
     if (sheetKind === 'pris' && PRS && PRS.o === o && PRS.k === k) prisSheet(o, k, true);
   }
@@ -5648,12 +6346,17 @@
       window.scrollTo(0, Math.max(0, p.getBoundingClientRect().top + (window.pageYOffset || 0) - off0));
       return;
     }
-    if (!f.tid) return;
-    var el = screen.querySelector('.pc[data-tid="' + f.tid + '"]');
+    if (!f.tid && f.k == null) return;
+    // 1а [§6.5]: „↳ продължение на …“ — по ид на точката, иначе по k; свита в „Прегледани“ → разгъва се; факт → редът в „Пълен запис“
+    var t = f.tid ? findT(f.tid) : null;
+    if (!t && f.k != null) t = findTk(f.k);
+    if (t && t.grupa !== 'fakt' && GRUPI.some(function (G) { return G.k === t.grupa; }) && pregledana(t)) { S.revOpen[t.grupa] = true; S.revCard[t.id] = true; renderGroups(); }
+    if (t && (t.grupa === 'fakt' || !GRUPI.some(function (G) { return G.k === t.grupa; }))) { fullGo(t); return; }
+    var el = t ? screen.querySelector('#groups .pc[data-tid="' + t.id + '"]') : null;
     if (!el) { toast('Точката е сменена в нова версия — прегледай деня'); return; }
     var tw = $('.topwrap'), off = (tw ? tw.getBoundingClientRect().height : 0) + 10;
     window.scrollTo(0, Math.max(0, el.getBoundingClientRect().top + (window.pageYOffset || 0) - off));
-    if (WIDE) panSelect(f.tid);
+    if (WIDE) panSelect(t.id);
     el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
     setTimeout(function () { el.classList.remove('flash'); }, 1600);
   }
@@ -6186,6 +6889,7 @@
     renderNastroiki(); window.scrollTo(0, 0);
     spisaciLoad(false);
     if (Date.now() - NS.mqAt > 36e5) mqLoad();
+    dokAllLoad(); merLoad();   // 1а [§6.8, §6.9]: регистърът на приложенията и минутите — само при отваряне на Настройки
   }
   function mqLoad() {
     if (NS.busy || offNow() || (!DEMO && (!db || !user))) return;
@@ -6227,12 +6931,14 @@
       '<li>Само в сводката 07:30 / 16:30</li>' +
       '<li>Файл за календара на телефона <span class="muted">(.ics с аларма — без разрешение; ако пробата на iPhone мине)</span></li></ol>' +
       '<p class="small muted">Докато решиш: напомнянето се вижда в Табло и в значката на Задачи, без звън.</p>');
-    h += nsCard('Как се прави дневникът', 'Какво влиза в Word и как се пише всяка сутрин', kakDnHtml());   // Етап 6 [§5.9, F6]
+    h += nsCard('Как се прави дневникът', 'Какво влиза в Word и кога се пише', kakDnHtml());   // Етап 6 [§5.9, F6]; 1а [§6.10]
     h += nsCard('Свежест на източниците', '', freshHtml() +
       '<div class="nas-r2">Задачите: лаптопът ги обработи последно ' + (az ? '<b>' + esc(rel(az)) + '</b>' : '<span class="muted">— (още не)</span>') + '</div>' +
       '<div class="nas-r2' + (spOld ? ' amber' : '') + '">Списъкът с хора от Интранета: ' + (sp ? 'от <b>' + esc(rel(sp)) + '</b>' + (spOld ? ' — по-стар от 30 дни' : '') : '<span class="muted">' + (SPL.st === 'missing' ? 'още не е качен (лаптопът)' : 'още не е зареден') + '</span>') + '</div>');
+    h += nsCard('📎 Приложенията (от ' + dvDat(DOK_OT, true) + ')', '', dokAllHtml());   // 1а [§6.8]
     h += nsCard('Място за снимки', '', mqHtml());
-    h += nsCard('Версия и данни', '', '<ul class="nas-v"><li>AiLab · Етап 6 (08.10) · кеш ailab-e6-v1</li><li>Данни към ' + esc(TB.at ? rel(TB.at) : '—') + '</li><li>Чакат връзка: ' + pendingCount() + '</li>' +
+    h += nsCard('⏱ Колко време отива в AiLab', '', merHtml());   // 1а [§6.9]
+    h += nsCard('Версия и данни', '', '<ul class="nas-v"><li>AiLab · Стъпка 1а (19.10) · кеш ailab-1a-v1</li><li>Данни към ' + esc(TB.at ? rel(TB.at) : '—') + '</li><li>Чакат връзка: ' + pendingCount() + '</li>' +
       '<li>' + (isStandalone() ? 'Инсталирано като иконка ✓' : 'Съвет: в Safari натисни <b>Сподели ⬆</b> → <b>Добави към началния екран</b>.') + '</li></ul>');
     h += nsCard('Още', '', '<div class="nas-b">' + (DEMO ? '' : '<button class="btn ghost" type="button" data-a="karti">🔎 Карти и търсене (Етап 0)</button>') + (DEMO ? demoPanel() : '') +
       (DEMO ? '<a class="btn ghost" href="./">Изход от демото</a>' : '<button class="btn ghost" type="button" data-a="logout">Изход</button>') + '</div>');
@@ -6394,6 +7100,28 @@
       case 'iztPris': iztPris(); break;
       case 'iztPitai': iztPitai(el.getAttribute('data-x'), +el.getAttribute('data-id')); break;
       case 'dnesOpen': openDnes(el.getAttribute('data-o')); break;
+      // Стъпка 1а — „Събрано до …“, версиите, „↳“, приложенията, мерене
+      case 'sabrano': openSab(); break;
+      case 'okStar': pcOkStar(tid); break;
+      case 'prd': prdGo(tid); break;
+      case 'prdNe': prdNe(tid); break;
+      case 'viX': if (S.den) { VI.skrit[S.den.id + ':' + S.den.versiq] = true; renderVerInfo(); } break;
+      case 'viGo': viGo(); break;
+      case 'wasFull': WAS[tid] = true; keepAnchor(renderGroups); if (WIDE) renderPan(true); break;
+      case 'starGo': starGo(); break;
+      case 'apWait': apWait(); break;
+      case 'dokDen': openDokDen(); break;
+      case 'dokSh': dokSheet(el.getAttribute('data-v') === 'ne' ? 'ne' : 'nov'); break;
+      case 'dnesDen': { var dno = el.getAttribute('data-o'), dni0 = +el.getAttribute('data-id') || null; if (dni0 && (dno === 'ag' || dno === 'soft')) goDay(dno, dni0, null); } break;
+      case 'izvanSave': izvanSave(); break;
+      case 'izvanNe': izvanZatvori(); toast('Добре — до утре'); break;
+      case 'dPrisSled': demoPrisSled(el); break;
+      case 'dDisk': demoDisk(el); break;
+      case 'dCikalNe': demoCikal(el, 'ne'); break;
+      case 'dCikalTece': demoCikal(el, 'tece'); break;
+      case 'dIzvan': D.izvanForce = true; MER.zatv = {}; ldel(izvanKey()); closeSheet(); go('tablo'); setTimeout(renderIzvan, 50); toast('Демо: картата „Днес извън AiLab“ е в Таблото'); break;
+      case 'dDokNo': demoDokNo(el); break;
+      case 'dSledNo': demoSledNo(el); break;
       case 'pitai': pitaiFromPlus(); break;
       case 'pitaiT': pitaiT(tid); break;
       case 'ptGo': ptGo(el.getAttribute('data-k')); break;
@@ -6488,13 +7216,13 @@
     else if (id === 'phD' && S.phOpen !== e.target.open) { S.phOpen = e.target.open; renderPh(); }
   }, true);
   document.addEventListener('visibilitychange', function () {
-    if (document.hidden) { commitUndos(); if (view === 'tablo') seenWrite(); return; }   // „Отмени“ не чака скрито приложение (първо опашката [К22])
+    if (document.hidden) { commitUndos(); if (view === 'tablo') seenWrite(); sesTick(); sesFlush(); return; }   // „Отмени“ не чака скрито приложение (първо опашката [К22]); 1а: отрязъкът на мерилото
     if (liveQ().length && !offNow()) flush();   // записите, влезли в опашката при скриването, тръгват при връщане
     if (view === 'day') { poll(true); if (S.den && !offNow() && Date.now() - PH.at > PH_C1_MS) phLoad(S.den.id); }   // [К30]
     else if (view === 'tablo' && stale60(TB.okAt)) { TB.seenBase = seenRead() || TB.seenBase; loadTablo(); }
     else if (view === 'deistviq' && stale60(S.actsOkAt)) loadActs();
   });
-  window.addEventListener('pagehide', function () { commitUndos(); if (view === 'tablo') seenWrite(); });
+  window.addEventListener('pagehide', function () { commitUndos(); if (view === 'tablo') seenWrite(); sesFlush(); });
   var scT = 0;
   window.addEventListener('scroll', function () {
     if (view !== 'tablo' || scT) return;
@@ -6564,7 +7292,11 @@
     TB.dni = []; TB.S = {}; TB.closed = {}; TB.inflight = {}; TB.soon = []; TB.odobri = []; TB.at = ''; TB.okAt = 0; TB.hasBase = false; TB.built = false; TB.defer = {};
     if (tablo) { tablo.innerHTML = ''; tablo._h = null; }
     S.den = null; S.dni = []; S.tochki = []; S.res = []; S.deistviq = []; S.counts = {}; S.svezhest = []; S.svAt = 0;
-    S.dataAt = ''; S.actsAt = ''; S.actsOkAt = 0; S.okAt = 0; S.newVersiq = 0; S.sig = '';
+    S.dataAt = ''; S.actsAt = ''; S.actsOkAt = 0; S.okAt = 0; S.newVersiq = 0; S.newHead = null; S.sig = '';
+    // Стъпка 1а [§6.12]: паметта — регистърът на приложенията, „след черновата“, закъснелите, мерилото; ключовете „извън AiLab“
+    SLED = {}; DOK = { den: {}, all: null, allSt: '', allAt: 0, allErr: null, lst: {} }; ZAK = {}; VI.skrit = {}; WAS = {};
+    MER.rows = null; MER.st = ''; MER.at = 0; MER.start = null; MER.startSt = ''; MER.zatv = {};
+    try { Object.keys(localStorage).filter(function (k) { return /^ailab-izvan-/.test(k); }).forEach(function (k) { localStorage.removeItem(k); }); } catch (e) {}
     phReset();   // подписаните адреси, кешът с миниатюрите ailab-snimki-v1 и прегледът
   }
 
@@ -6675,6 +7407,15 @@
       '<button type="button" class="btn ghost" data-a="dSpi" aria-pressed="' + !!(D && D.spi) + '">' + demoE6Lbl('spi') + '</button>' +
       '<button type="button" class="btn ghost" data-a="dTeamsV" aria-pressed="' + !!(D && D.teamsV) + '">' + demoE6Lbl('tv') + '</button>' +
       '<button type="button" class="btn ghost" data-a="dE6No" aria-pressed="' + !!(D && D.e6No) + '">' + demoE6Lbl('e6') + '</button>' +
+      // Стъпка 1а [§6.11]: Присъствия след черновата · C: · пускът не е тръгнал · обновяване тече · „извън AiLab“ · без регистъра · без новото
+      '<div class="demo-h">Стъпка 1а</div>' +
+      '<button type="button" class="btn ghost" data-a="dPrisSled">' + demo1aLbl('pris') + '</button>' +
+      '<button type="button" class="btn ghost" data-a="dSledNo" aria-pressed="' + !!(D && D.sledNo) + '">' + demo1aLbl('sled') + '</button>' +
+      '<button type="button" class="btn ghost" data-a="dDisk">' + demo1aLbl('disk') + '</button>' +
+      '<button type="button" class="btn ghost" data-a="dCikalNe" aria-pressed="' + !!(D && D.cikal === 'ne') + '">' + demo1aLbl('ne') + '</button>' +
+      '<button type="button" class="btn ghost" data-a="dCikalTece" aria-pressed="' + !!(D && D.cikal === 'tece') + '">' + demo1aLbl('tece') + '</button>' +
+      '<button type="button" class="btn ghost" data-a="dIzvan">⏱ Карта „извън AiLab“ (и извън часа)</button>' +
+      '<button type="button" class="btn ghost" data-a="dDokNo" aria-pressed="' + !!(D && D.dokNo) + '">' + demo1aLbl('dok') + '</button>' +
       '<button type="button" class="btn ghost" data-a="dReset">Започни демото отначало</button></div>';
   }
   function demoPanel() {
@@ -6689,6 +7430,7 @@
   // отначало: и отметките „✓ Видях“, „последно избирани“ и изборът To Do/Интранет на демото (подредбата, темата и размерът остават)
   function demoReset() {
     ['ailab_e4_vidyano', 'ailab_e4_hora', 'ailab_e4_za_men_cel'].forEach(function (k) { try { localStorage.removeItem(k + '_demo'); } catch (e) {} });
+    try { Object.keys(localStorage).filter(function (k) { return /^ailab-izvan-.*_demo$/.test(k); }).forEach(function (k) { localStorage.removeItem(k); }); } catch (e) {}   // 1а: „извън AiLab“
     try { location.replace(location.pathname + location.search); } catch (e) { location.reload(); }
   }
   function demoPat(data, v) { return 'OneDrive\\…\\' + data + '\\Дневен запис v' + v + '.md'; }
@@ -6709,13 +7451,13 @@
     counts: function (ids) {
       return later(function () {
         return {
-          t: D.tochki.filter(function (t) { return ids.indexOf(t.den_id) >= 0 && (t.grupa === 'reshenie' || t.grupa === 'neprovereno'); }).map(function (t) { return pick(t, 'id,den_id,grupa,istina'); }),
-          r: D.resheniq.filter(function (r) { return ids.indexOf(r.den_id) >= 0 && ANSW[r.vid] && r.tochka_id != null; }).map(function (r) { return pick(r, 'den_id,tochka_id,vid'); })
+          t: D.tochki.filter(function (t) { return ids.indexOf(t.den_id) >= 0 && (t.grupa === 'reshenie' || t.grupa === 'neprovereno'); }).map(function (t) { return pick(t, 'id,den_id,grupa,istina,obnovena_v'); }),
+          r: D.resheniq.filter(function (r) { return ids.indexOf(r.den_id) >= 0 && ANSW[r.vid] && r.tochka_id != null; }).map(function (r) { return pick(r, 'den_id,tochka_id,vid,versiq'); })
         };
       });
     },
     den: function (id) { return later(function () { return dDen(id); }); },
-    head: function (id) { return later(function () { var d = dDen(id); return d ? pick(d, 'id,versiq,status,hesh,obnoven,vpisan_pat') : null; }); },
+    head: function (id) { return later(function () { var d = dDen(id); return d ? pick(d, HEAD0 + ',sabrano,promeni') : null; }); },
     tochki: function (id) { return later(function () { return D.tochki.filter(function (t) { return t.den_id === id; }).sort(function (a, b) { return a.red - b.red || a.id - b.id; }); }); },
     istini: function (id) { return later(function () { return D.tochki.filter(function (t) { return t.den_id === id; }).map(function (t) { return pick(t, 'id,istina'); }); }); },
     res: function (id) { return later(function () { return D.resheniq.filter(function (r) { return r.den_id === id; }).sort(function (a, b) { return a.kogda < b.kogda ? -1 : a.kogda > b.kogda ? 1 : 0; }); }); },
@@ -6726,6 +7468,13 @@
           var r = pick(s, 'izvor,posledno,ok,broi,belejka');
           if (s.izvor === 'laptop') r.posledno = D.spi ? dT('2026-09-24T17:02:00+03:00') : new Date(nowMs() - 60000).toISOString();
           if (s.izvor === 'teams' && D.teamsV) r.posledno = dT('2026-09-23T09:05:00+03:00');
+          // Стъпка 1а [§6.11]: C: (пазачът, на 30 мин) и черновата (цикълът; пазачът — „не е тръгнал“) — от демо панела
+          if (s.izvor === 'disk') { r.broi = D.disk; r.ok = D.disk >= 15; r.posledno = new Date(nowMs() - 5 * 60000).toISOString();
+            r.belejka = 'C: ' + D.disk + ' GB свободни' + (D.disk < 8 ? ' — под 8 GB, освободи място' : D.disk < 15 ? ' — под 15 GB' : ''); }
+          if (s.izvor === 'chernova') {
+            if (D.cikal === 'ne') { r.ok = false; r.broi = 0; r.belejka = 'Пускът в 22:45 не е тръгнал (Claude е затворена или лимитът е свършил)'; }
+            else if (D.cikal === 'tece') { r.ok = true; r.broi = 1; r.belejka = 'тече от ' + hhmm(new Date(nowMs() - 4 * 60000)) + ' (обновяване)'; }
+          }
           return r;
         });
       });
@@ -6835,7 +7584,7 @@
       return later(function () {
         if (D.prisNo) throw { code: '42P01', message: 'relation "public.prisystvie" does not exist' };
         var r = D.prisystvie.filter(function (x) { return x.obekt === o && x.data === d && x.v_izvora !== false; })[0];
-        return r ? pick(r, 'obekt,data,po_brigadi,obshto,neto,obnoveno_v') : null;
+        return r ? pick(r, 'obekt,data,po_brigadi,obshto,neto,obnoveno_v,sinhr') : null;
       });
     },
     izad: function (rg) {
@@ -6856,8 +7605,44 @@
     saobIds: function (ids) {
       return later(function () { return D.saobshteniq.filter(function (r) { return ids.indexOf(r.id) >= 0; }).sort(dSaobSort).slice(0, 60).map(function (r) { return pick(r, SAOB_COLS); }); });
     },
-    saobDnesK: function (o, data) {
-      return later(function () { return D.saobshteniq.filter(function (r) { return r.obekt === o && r.data === data && r.den_id == null; }).sort(dSaobSort).slice(0, 1000).map(function (r) { return pick(r, 'id,kluch,vid,vreme'); }); });
+    saobDnesK: function (o, data, vse) {
+      return later(function () { return D.saobshteniq.filter(function (r) { return r.obekt === o && r.data === data && (vse || r.den_id == null); }).sort(dSaobSort).slice(0, 1000).map(function (r) { return pick(r, 'id,kluch,vid,vreme'); }); });
+    },
+    // ---- Стъпка 1а — като истинските (010_stapka1a.sql); „без регистъра“ (демо панел) → 42P01 ----
+    slednoBroi: function (o, data, ot) {
+      return later(function () {
+        var x = { teams: 0, mail: 0 }; if (D.sledNo) return x;
+        D.saobshteniq.forEach(function (r) { if (r.obekt === o && r.data === data && (r.sazdadeno || r.vreme) > ot) { if (r.vid === 'mail') x.mail++; else x.teams++; } });
+        return x;
+      });
+    },
+    dokDen: function (o, data) {
+      return later(function () {
+        if (D.dokNo) throw { code: '42P01', message: 'relation "public.dokumenti" does not exist' };
+        return D.dokumenti.filter(function (r) { return r.obekt === o && r.data === data; }).slice(0, 300).map(function (r) { return pick(r, DOK_COLS); });
+      });
+    },
+    dokVsichki: function (ot, rg) {
+      return later(function () {
+        if (D.dokNo) throw { code: '42P01', message: 'relation "public.dokumenti" does not exist' };
+        return D.dokumenti.filter(function (r) { return r.data >= ot; }).sort(function (a, b) { return a.id - b.id; }).slice(rg[0], rg[1] + 1).map(function (r) { return pick(r, 'obekt,status'); });
+      });
+    },
+    dokSt: function (ot, sts, rg) {
+      return later(function () {
+        if (D.dokNo) throw { code: '42P01', message: 'relation "public.dokumenti" does not exist' };
+        return D.dokumenti.filter(function (r) { return r.data >= ot && sts.indexOf(r.status) >= 0; })
+          .sort(function (a, b) { return a.data < b.data ? 1 : a.data > b.data ? -1 : a.id - b.id; }).slice(rg[0], rg[1] + 1).map(function (r) { return pick(r, DOK_COLS + ',obekt,data'); });
+      });
+    },
+    zakasneliZa: function (o, data) {
+      return later(function () { var d = parseD(data); d.setDate(d.getDate() + 21); var lim = ymd(d); return D.dni.filter(function (x) { return x.obekt === o && x.data > data && x.data <= lim; }).map(function (x) { return pick(x, 'id,data,sabrano'); }); });
+    },
+    vremeSedm: function (ot) {
+      return later(function () { return D.metriki.filter(function (r) { return /^(aktivno|izvan)/.test(r.vid || '') && r.kogda >= ot; }).slice(0, 2000).map(function (r) { return pick(r, 'vid,stoinost,kogda'); }); });
+    },
+    merStart: function () {
+      return later(function () { return D.metriki.filter(function (r) { return /^aktivno/.test(r.vid || ''); }).sort(function (a, b) { return a.kogda < b.kogda ? -1 : 1; }).slice(0, 1).map(function (r) { return pick(r, 'kogda'); }); });
     },
     dvizh: function (o, data) {
       return later(function () {
@@ -6909,6 +7694,12 @@
     if (tbl === 'resheniq') {
       r.kogda = row.kogda || nowIso(); r.obraboteno = null; r.rezultat = null; D.resheniq.push(r);
       if (r.vid === 'izkljuchi' || r.vid === 'vkljuchi') { demoTrigger(r); return r; }   // като тригера ailab_v_dnevnika — веднага
+      if (r.vid === 'vrazka_ne') {   // 1а [§3.3]: като тригера resheniq_vrazka_ne — връзката се маха веднага, на всеки статус на деня
+        var tv = D.tochki.filter(function (x) { return x.id === r.tochka_id && x.den_id === r.den_id; })[0];
+        if (tv) tv.prodalzhenie = null;
+        r.obraboteno = nowIso(); r.rezultat = tv ? 'връзката е махната' : 'точката я няма в текущата версия';
+        return r;
+      }
     }
     else if (tbl === 'deistviq') { r.status = 'zaqveno'; r.sazdadeno = row.sazdadeno || nowIso(); r.obnoveno = null; r.belejka = null; r.vanshen_id = null; r.vanshen_url = null; r.opit = null; D.deistviq.push(r); return r; }
     else if (tbl === 'deistviq_bel') { r.kogda = row.kogda || nowIso(); r.obraboteno = null; r.rezultat = null; D.deistviq_bel.push(r); return r; }
@@ -6931,14 +7722,17 @@
   function demoLaptop() {
     var t = nowIso();
     D.resheniq.forEach(function (r) {
-      if (r.obraboteno || r.vid === 'dobavi') return;   // „➕“ — само сутрешният пуск (4а), не работникът
+      if (r.obraboteno || r.vid === 'dobavi') return;   // „➕“ — само цикълът (вечер / сутрин), не работникът
       var d = dDen(r.den_id);
       if (r.vid === 'odobri' && d) {
         if (r.versiq !== d.versiq) r.rezultat = 'остаряла версия';
         else if (d.status === 'vpisana') r.rezultat = 'вече вписан';
         else { d.status = 'vpisana'; d.vpisan_pat = demoPat(d.data, d.versiq); r.rezultat = 'вписан'; }
       } else if (r.vid === 'potvardi') {
-        var tt = D.tochki.filter(function (x) { return x.id === r.tochka_id; })[0]; if (tt) tt.istina = 'provereno'; r.rezultat = tt ? 'потвърдено' : 'точката я няма в текущата версия';
+        // 1а [§5.19а]: ✓ потвърждава само текста, който РП е видял (versiq ≥ obnovena_v)
+        var tt = D.tochki.filter(function (x) { return x.id === r.tochka_id; })[0];
+        if (tt && r.versiq != null && tt.obnovena_v != null && +r.versiq < +tt.obnovena_v) r.rezultat = 'потвърдено за v' + r.versiq + ' — текстът е обновен във v' + tt.obnovena_v;
+        else { if (tt) tt.istina = 'provereno'; r.rezultat = tt ? 'потвърдено' : 'точката я няма в текущата версия'; }
       } else { r.rezultat = 'чака Claude'; return; }   // като ailab-rabotnik: поправките и разясненията остават необработени за Claude
       r.obraboteno = t;
     });
@@ -7022,6 +7816,8 @@
     if (!S.den) return;
     var d = dDen(S.den.id); if (!d) return;
     if (d.status !== 'chernova') { toast('Одобрен или вписан ден не се пипа — лаптопът само предупреждава.'); return; }
+    // Стъпка 1а [§4.2, §6.11]: всички точки имат k → като ailab-kachi-den в k-режим (обновяване НА МЯСТО, същите идове)
+    if (D.tochki.some(function (x) { return x.den_id === d.id; }) && D.tochki.every(function (x) { return x.den_id !== d.id || x.k != null; })) { demoNewVersionK(d); return; }
     d.versiq += 1; d.hesh = Math.random().toString(16).slice(2, 10); d.obnoven = nowIso();
     D.tochki.push({ id: ++D.seq, den_id: d.id, razdel: 6, grupa: 'promqna', k: 16, v_dnevnika: true, tekst: 'Доставчикът на арматура потвърди частична доставка — 6 т арматура Ø12 на 29.09, сутринта.', istina: 'saobshteno', vajnost: 2,
       izvori: [{ n: 19, tip: 'Мейл', kratko: 'доставчикът на арматура · потвърждение на частична доставка', vreme: hhmm(), kade: 'Поща/' + hhmm().replace(':', '') + '00_доставка_арматура.eml' }], red: 0 });
@@ -7036,6 +7832,43 @@
       D.tochki.push(Object.assign({}, kr, { id: ++D.seq, tekst: 'Кулокран 1 е стоял 13:00–15:00 — механикът потвърди смяната на хидравличния маркуч.', istina: 'provereno' }));
     }
     toast('Лаптопът качи v' + d.versiq + ' — телефонът ще я види до ' + Math.round(POLL_MS / 1000) + ' с');
+  }
+  // k-режим: същият ред по k (✓, ✎, →, 🚫 остават на точката — resheniq/deistviq НЕ се пипат); нов k (най-големият + 1);
+  // сменен текст на k 7 (obnovena_v, predishen_tekst); махнат k 10 (връзките към него стават празни — ON DELETE SET NULL)
+  function demoNewVersionK(d) {
+    var ov = d.versiq, nv = ov + 1, pts = D.tochki.filter(function (x) { return x.den_id === d.id; });
+    var kMax = pts.reduce(function (m, x) { return Math.max(m, +x.k || 0); }, 0), nk = kMax + 1, rMax = pts.reduce(function (m, x) { return Math.max(m, +x.red || 0); }, 0);
+    d.versiq = nv; d.hesh = Math.random().toString(16).slice(2, 10); d.obnoven = nowIso();
+    // 1) нова точка
+    D.tochki.push({ id: ++D.seq, den_id: d.id, razdel: 6, grupa: 'promqna', k: nk, v_dnevnika: true, tekst: 'Доставчикът на арматура потвърди частична доставка — 6 т арматура Ø12 на 29.09, сутринта.', istina: 'saobshteno', vajnost: 2,
+      izvori: [dMsgFix({ n: 19, tip: 'Мейл', kratko: 'доставчикът на арматура · потвърждение на частична доставка', vreme: hhmm(), kade: 'Поща/' + hhmm().replace(':', '') + '00.eml' }, d.data)], red: rMax + 1,
+      vav_versiq: nv, obnovena_v: null, predishen_tekst: null, prodalzhenie: null });
+    d.zapis_md = String(d.zapis_md || '').replace('\n\n## 7. ', '\n- Доставчикът на арматура потвърди частична доставка: 6 т Ø12 на 29.09 [19]. ⟦' + nk + '⟧\n\n## 7. ');
+    // 2) сменен текст — k 7 (иначе първата карта): същият ид
+    var ch = pts.filter(function (x) { return x.k === 7; })[0] || pts.filter(function (x) { return x.grupa !== 'fakt'; })[0], obn = [];
+    if (ch) {
+      ch.predishen_tekst = ch.tekst;
+      ch.tekst = String(ch.tekst).replace(/\s*\(обновено:[^)]*\)\s*$/, '') + ' (обновено: инвеститорът писа пак в ' + hhmm() + ')';
+      ch.obnovena_v = nv; ch.istina = 'saobshteno'; obn.push(ch.k);
+    }
+    // 3) махната точка — k 10 (фактът вече го няма), с моя отговор → предупреждението „на 1 махната точка — не“
+    var rm = pts.filter(function (x) { return x.k === 10 && x !== ch; })[0], mah = [];
+    if (rm) {
+      var otg = D.resheniq.some(function (r) { return r.tochka_id === rm.id && /^(potvardi|popravka|komentar|osporva|izkljuchi|vkljuchi)$/.test(r.vid); }) || D.deistviq.some(function (a) { return a.tochka_id === rm.id; });
+      mah.push({ k: rm.k, tekst: clip(rm.tekst, 120), otgovor: otg });
+      D.tochki = D.tochki.filter(function (x) { return x !== rm; });
+      D.resheniq.forEach(function (r) { if (r.tochka_id === rm.id) r.tochka_id = null; });
+      D.deistviq.forEach(function (a) { if (a.tochka_id === rm.id) a.tochka_id = null; });
+      d.zapis_md = String(d.zapis_md).split('\n').filter(function (l) { var ks = mdKs(l); return !(ks.length === 1 && ks[0] === rm.k); }).join('\n');
+    }
+    d.promeni = { v: nv, ot_v: ov, vreme: nowIso(), novi: [nk], obnoveni: obn, mahnati: mah };
+    if (d.sabrano) {
+      var vz = new Date(nowMs() - 2 * 60000).toISOString();
+      d.sabrano = Object.assign({}, d.sabrano, { vzeto: vz, provereno: null, vid: 'obnovqvane', chas: '22:45', tragnal: new Date(nowMs() - 3 * 60000).toISOString() });
+      if (d.obekt === 'ag' && d.data === '2026-09-24') D.a24vzeto = vz;   // демо панелът „Присъствия след/преди черновата“ — спрямо новата снимка
+    }
+    D.svezhest.forEach(function (s) { if (s.izvor === 'chernova') { s.posledno = nowIso(); s.belejka = 'v' + nv + ' · ' + hhmm() + ' · ' + (d.obekt === 'ag' ? 'Амур' : 'Скай') + ' +1/1 · махната 1'; } });
+    toast('Лаптопът качи v' + nv + ' — телефонът ще я види до ' + Math.round(POLL_MS / 1000) + ' с');
   }
   // „Лаптопът качва нов ден“ → Амур 25.09: +1 ден за одобрение, +1 решение, „🆕“, хапче „↑ Нови промени“ (ако си скролнал).
   function demoNewDay() {
@@ -7186,7 +8019,11 @@
       [4, 'promqna', 'Фасада на сграда 3 — клинкерът стигна 70%.', 'provereno', 1, [chat(2, 'бригадир фасада · чат „Амур Гардънс“', '16:10')]]]);
     dKratak('ag', '2026-09-22', 'vpisana', 3, 51, 'Започна кофражът на плоча +9,30 в сграда 2 от ос 1. Доставчикът на арматура обеща остатъка за 25.09.', [
       [4, 'promqna', 'Кофраж на плоча +9,30, сграда 2 — започнат от ос 1.', 'provereno', 2, [agCh(1, '07:40')]],
-      [6, 'reshenie', 'Доставчикът на арматура обещава остатъка (≈14 т) за 25.09 — да се следи.', 'provereno', 2, [mail(2, 'доставчикът на арматура · потвърждение на срок', '13:20')]]]);
+      [6, 'reshenie', 'Доставчикът на арматура обещава остатъка (≈14 т) за 25.09 — да се следи.', 'provereno', 2, [mail(2, 'доставчикът на арматура · потвърждение на срок', '13:20')]],
+      // Стъпка 1а [§6.11]: k 5 — към нея сочи „↳ продължение на: 22.09 …“ от Амур 24.09
+      [3, 'fakt', 'Общо 51 души на обекта по Присъствия.', 'provereno', 1, [src(3, 'Присъствия', 'въведено за 8 бригади', '08:15', 'Присъствия/2026-09-22.json')]],
+      [5, 'promqna', 'Армировката на стълбището в сграда 1 — подготвена за приемане.', 'provereno', 1, [agCh(4, '15:10')]],
+      [6, 'promqna', 'Поръчана армировка Ø12/Ø16 (≈14 т) за плоча +9,30 — снабдяването потвърди поръчката.', 'provereno', 2, [chat(5, 'Demo Snab · чат на снабдяването', '09:12')]]]);
     var d23 = dKratak('ag', '2026-09-23', 'odobrena', 2, 50, 'Кофражът на +9,30 стигна ос 5. Инвеститорът поиска график за фасадата на сграда 4.', [
       [4, 'promqna', 'Кофраж на плоча +9,30, сграда 2 — до ос 5.', 'saobshteno', 2, [agCh(1, '16:50')]],
       [7, 'reshenie', 'Инвеститорът иска график за фасадата на сграда 4 до края на седмицата.', 'saobshteno', 2, [mail(2, 'Инвеститор · писмо', '11:02')]],
@@ -7205,7 +8042,9 @@
     var s5 = chat(5, 'ПТО · чат на ПТО: „арматурата няма да дойде преди 01.10“', '11:30');
     var s6 = mail(6, 'бетонов възел · 2 товарителници, 24 м³ C25/30', '10:52');
     var s7 = chat(7, 'бригадир фасада · чат „Амур Гардънс“', '15:02');
-    var s8 = src(8, 'Метео', 'прогноза за обекта, публикувана в Тиймс', '06:30', 'Метео/2026-09-24.json');
+    // Стъпка 1а [§4.5]: времето — Open-Meteo, модел за града (мястото идва само от данните; в демото — „Демо град“)
+    var s8 = { n: 8, tip: 'Метео', kratko: 'Open-Meteo · Демо град (център на града)', vreme: '17:01', kade: 'Метео.md' };
+    var s21 = chat(21, 'ТР на обекта · канал на обекта: „площадката е суха, кранът работи“', '07:05');
     var s9 = chat(9, 'механизатор · чат „Амур Гардънс“: „кранът стои, сменяме маркуч“', '13:05');
     var s10 = mail(10, 'подизпълнител кофраж · количествена сметка за поредния акт', '09:41');
     var s11 = mail(11, 'Инвеститор · въпрос за датата на бетона', '16:12');
@@ -7228,7 +8067,7 @@
         [3, 'neprovereno', 'Разлика в броя кофражисти: чатът казва 10, Присъствия — 8. В дневника засега са 8 (по Присъствия).', 'osporeno', 2, [s1, s3]],
         [8, 'neprovereno', 'Кулокран 1 е стоял 13:00–15:00 (смяна на хидравличен маркуч) — само от едно съобщение, механикът не е потвърдил.', 'saobshteno', 2, [s9]],
         [11, 'neprovereno', 'Часът за огледа на армировката с надзора не е потвърден — няма писмо от надзора.', 'saobshteno', 1, []],
-        [2, 'fakt', 'Слънчево, 14–29 °C, вятър до 4 m/s — без ограничения за крана и бетона.', 'provereno', 1, [s8]],
+        [2, 'promqna', 'Времето (Open-Meteo, Демо град): слънчево, 14…29 °C; вятър до 4 м/с — без ограничения за крана; площадката е суха.', 'provereno', 1, [s8, s21]],
         [3, 'fakt', 'Общо 50 души на обекта по Присъствия, 8 бригади.', 'provereno', 1, [s3]],
         [7, 'fakt', 'Интранет: нови задачи 1 (#7027) — „Предай екзекутивите на ВиК за сграда 1“.', 'provereno', 1, [s15]],
         [4, 'promqna', 'Площадката около стълбището на сграда 1 е почистена — там отиват палетите с клинкер.', 'saobshteno', 1, [s17]],
@@ -7238,7 +8077,7 @@
         // етикетите „**Кран и помпа:**“ и „**Пробни кубчета:**“ носят номерата под тях [К8]; Етап 6: етикет със свой ⟦k⟧,
         // после празен ред и таблица — остава (П5); разделите — 12-те на указанията [§5.1]
         1: 'Нормален работен ден, **50 души** на обекта (по Присъствия). Кофражът на плоча +9,30 в сграда 2 е довършен до ос 7; армировката започва утре от 07:00 [1][2]. ⟦12,1⟧\n**Риск:** доставчикът на арматура отлага арматурата Ø12/Ø16 с 5–10 дни [4][5] — застрашава бетона на +9,30 по график (02.10). ⟦5⟧',
-        2: 'Слънчево, 14–29 °C, вятър до 4 m/s. Без ограничения за крана и бетона [8]. ⟦11⟧',
+        2: '- Времето (Open-Meteo, Демо град): слънчево, 14…29 °C; вятър до 4 м/с — без ограничения за крана; площадката е суха [8][21]. ⟦11⟧',
         3: '- Хора на обекта по Присъствия: 50 (нето); въведени 55; не влизат в нето: Ръководство 5 ⟦12⟧\n\nХора по бригади: ⟦8,12⟧\n\n| Бригада | Къде | Хора |\n|---|---|---|\n| Кофражисти | плоча +9,30, сграда 2 | 8 (чат: 10) [1][3] ⟦8,12⟧ |\n| Арматуристи | стълбище, сграда 1 | 6 ⟦12⟧ |\n| Зидари | сграда 3 | 8 ⟦12⟧ |\n| Фасада | сграда 3 → 4 | 9 [7] ⟦12⟧ |\n| Бетонджии | стълбище, сграда 1 | 4 [6] ⟦12⟧ |\n| ВиК | вертикални щрангове | 4 ⟦12⟧ |\n| Електро | ел. инсталация, сграда 1 | 5 ⟦12⟧ |\n| Общи работници | почистване, пренасяне | 6 ⟦12⟧ |\n| **Общо** | | **50** [3] ⟦8,12⟧ |',
         4: '- Сграда 2, плоча +9,30 — кофражът е довършен до ос 7 [1][2]. ⟦1⟧\n- Сграда 3 — демонтирано скелето по северната фасада; бригадата минава на сграда 4 [7]. ⟦3⟧\n- Сграда 1 — почистена площадката около стълбището за палетите с клинкер [17]. ⟦14⟧\n\n**Кран и помпа:** ⟦9,2⟧\n- Кулокран 1 — стоял 13:00–15:00, смяна на хидравличен маркуч (само от едно съобщение) [9]. ⟦9⟧\n- Помпа за бетон 09:00–11:00. ⟦2⟧',
         5: '**Пробни кубчета:** ⟦4⟧\n- 7-дневните кубчета от плоча +6,20 (бетон от 17.09) — 31,2 MPa при клас C25/30 [12]. ⟦4⟧\n- 28-дневните — на 15.10. ⟦4⟧',
@@ -7301,6 +8140,114 @@
     demoE4(d23, dDayOf('ag', '2026-09-24'), k23, { s1: s1, s2: s2, s4: s4, s5: s5, s6: s6, s7: s7, s9: s9, s10: s10, s11: s11 });
     demoE5(k23);
     demoE6(dDayOf('ag', '2026-09-24'), dDayOf('soft', '2026-09-24'));
+    demoE1a(dDayOf('ag', '2026-09-24'), d23, dDayOf('ag', '2026-09-22'));
+  }
+  // ---- Стъпка 1а (§6.11): „събрано до“, версиите по k, „↳“, закъснелите, времето, приложенията, мерилото — всичко измислено ----
+  // Амур 24.09 (v3, обновяване „от 22:45“ — демото не спазва вечерния час), Амур 23.09 (одобрен с „добави утре“), Амур 22.09 (k 5 за „↳“).
+  // Скай 24.09 остава БЕЗ sabrano (старият вид), Скай 23.09 — без промяна.
+  function demoE1a(a24, d23, a22) {
+    var T = dT;
+    D.disk = 33; D.cikal = ''; D.sledNo = false; D.dokNo = false; D.izvanForce = false; D.prisSled = 0; D.dokumenti = [];
+    D.svezhest.push(
+      { izvor: 'prilojeniq', posledno: T('2026-09-24T16:02:00+03:00'), ok: true, broi: 6, belejka: 'чака отворен Outlook · последно свалено 16:02' },
+      { izvor: 'disk', posledno: T('2026-09-24T17:30:00+03:00'), ok: true, broi: 33, belejka: 'C: 33 GB свободни' },
+      { izvor: 'chernova', posledno: T('2026-09-24T17:20:00+03:00'), ok: true, broi: 0, belejka: 'v3 · 17:20 · Амур +2/2 · Скай без промяна' });
+    var vz = new Date(nowMs() - 40 * 60000).toISOString();   // часовникът − 40 мин → „Събрано до 17:02“
+    D.a24vzeto = vz;
+    function izv(t, pz) {
+      return { teams: { posledno: t, ok: true }, poshta: { posledno: t, ok: true }, intranet: { posledno: T('2026-09-24T16:02:00+03:00'), ok: true }, prisystvia: Object.assign({ posledno: t, ok: true }, pz),
+        prilojeniq: { posledno: T('2026-09-24T16:02:00+03:00'), ok: true }, meteo: { ok: true, mqsto: 'Демо град' }, laptop: { posledno: t } };
+    }
+    if (d23) {
+      d23.sabrano = { v: 1, obekt: 'ag', data: d23.data, vzeto: T('2026-09-23T19:03:00+03:00'), provereno: null, vid: 'palna', chas: '19:00', tragnal: T('2026-09-23T19:01:00+03:00'),
+        izvori: izv(T('2026-09-23T19:02:00+03:00'), { ima_zapis: true, neto: 49, vavedeno: T('2026-09-23T08:20:00+03:00') }), saob: { teams: 18, mail: 6 } };
+      D.resheniq.forEach(function (r) { if (r.den_id === d23.id && r.vid === 'odobri') r.tekst = 'добави утре'; });
+    }
+    if (!a24) return;
+    a24.sabrano = { v: 1, obekt: 'ag', data: a24.data, vzeto: vz, provereno: null, vid: 'obnovqvane', chas: '22:45', tragnal: new Date(Date.parse(vz) - 60000).toISOString(),
+      izvori: izv(vz, { ima_zapis: false, neto: null, vavedeno: null }), saob: { teams: 41, mail: 10 }, zakasneli: { '2026-09-23': { do: vz, n: 2, pris_neto: null } } };
+    // k 30 — махната във v3 (точката я няма; отговорът ми по нея остава в базата с празна точка)
+    a24.promeni = { v: 3, ot_v: 2, vreme: a24.obnoven, novi: [31, 32], obnoveni: [3, 7], mahnati: [{ k: 30, tekst: 'Демо: махната точка', otgovor: true }] };
+    var P = function (k) { return D.tochki.filter(function (t) { return t.den_id === a24.id && t.k === k; })[0] || null; };
+    D.tochki.forEach(function (t) { if (t.den_id === a24.id) { t.vav_versiq = 1; t.obnovena_v = null; t.predishen_tekst = null; t.prodalzhenie = null; } });
+    var t1 = P(1), t3 = P(3), t5 = P(5), t7 = P(7), t10 = P(10);
+    if (t3) {
+      t3.predishen_tekst = t3.tekst; t3.obnovena_v = 3;
+      t3.tekst = 'Сграда 3 — скелето по северната и западната фасада е демонтирано; фасадната бригада минава на сграда 4 от утре сутринта.';
+      a24.zapis_md = String(a24.zapis_md).replace('демонтирано скелето по северната фасада; бригадата минава на сграда 4', 'демонтирано скелето по северната и западната фасада; бригадата минава на сграда 4 от утре');
+    }
+    if (t7) {
+      t7.predishen_tekst = t7.tekst; t7.obnovena_v = 3;
+      t7.tekst = t7.tekst + ' Вечерта писа пак — иска отговор до утре на обяд.';
+      t7.prodalzhenie = { tid: 7001, kratko: '#7001 „Изпрати на инвеститора графика за фасадата на сграда 4“ — срок 30.09' };
+    }
+    var t22 = a22 ? D.tochki.filter(function (t) { return t.den_id === a22.id && t.k === 5; })[0] : null;
+    if (t5 && a22) t5.prodalzhenie = { data: '2026-09-22', k: 5, kratko: 'Демо: поръчка армировка (Тиймс чат · Demo Snab · 09:12)', den_id: a22.id, tochka_id: t22 ? t22.id : null };
+    // отговорите: ✓ на k 3 е за v2 (→ „✓ беше за v2 — още ли е вярно?“); ✓ на k 7 — за v3; ✎ на k 1 — ненанесена; разяснение на k 10 (обработено)
+    function RS(o) {
+      D.resheniq.push(Object.assign({ id: ++D.seq, den_id: a24.id, tochka_id: null, vid: 'potvardi', tekst: null, versiq: 3, hesh: a24.hesh, ustroistvo: 'iPhone · иконка',
+        kogda: T('2026-09-24T17:25:00+03:00'), obraboteno: T('2026-09-24T17:27:00+03:00'), rezultat: 'потвърдено' }, o));
+    }
+    if (t3) RS({ tochka_id: t3.id, versiq: 2, kogda: T('2026-09-24T16:50:00+03:00'), obraboteno: T('2026-09-24T16:52:00+03:00') });
+    if (t7) RS({ tochka_id: t7.id, tekst: 'отговорено', kogda: T('2026-09-24T17:30:00+03:00'), obraboteno: T('2026-09-24T17:31:00+03:00') });
+    if (t1) RS({ tochka_id: t1.id, vid: 'popravka', tekst: 'Кофражът е до ос 6 — ос 7 остава за утре сутринта.', kogda: T('2026-09-24T17:35:00+03:00'), obraboteno: null, rezultat: null });
+    if (t10) RS({ tochka_id: t10.id, vid: 'komentar', tekst: 'Обади се на надзора утре сутрин — огледът е след ос 4.', kogda: T('2026-09-24T17:33:00+03:00'), obraboteno: T('2026-09-24T17:36:00+03:00'), rezultat: 'взето предвид' });
+    RS({ versiq: 2, kogda: T('2026-09-24T16:45:00+03:00'), obraboteno: T('2026-09-24T17:20:00+03:00'), rezultat: 'точката я няма в текущата версия' });   // за k 30
+    // нови във v3: „Закъснели за 23.09“ (мейл от 23.09, 21:40 — след одобрението) и „Поправка към записа за 23.09“
+    var red = D.tochki.filter(function (t) { return t.den_id === a24.id; }).reduce(function (m, t) { return Math.max(m, t.red || 0); }, 0);
+    var s20 = { n: 20, tip: 'Мейл', kratko: 'надзорът · потвърждение на огледа', vreme: '21:40', kade: 'Оригинали/2026-09-23_184000_mail.txt', den: '2026-09-23' };
+    var c23 = d23 ? (D.tochki.filter(function (t) { return t.den_id === d23.id && t.k === 3; })[0] || { izvori: [] }).izvori.filter(function (s) { return /^Тиймс/.test(s.tip || ''); })[0] : null;
+    var s22 = c23 ? Object.assign({}, c23, { n: 22, den: '2026-09-23' }) : null;
+    D.tochki.push({ id: ++D.tid, den_id: a24.id, razdel: 7, grupa: 'promqna', k: 31, v_dnevnika: true, istina: 'saobshteno', vajnost: 2, red: red + 1, izvori: [s20],
+      tekst: 'Закъснели за 23.09: надзорът потвърди огледа на армировката на +9,30 за понеделник, 10:00 (мейл от 23.09, 21:40).', vav_versiq: 3, obnovena_v: null, predishen_tekst: null, prodalzhenie: null });
+    D.tochki.push({ id: ++D.tid, den_id: a24.id, razdel: 3, grupa: 'promqna', k: 32, v_dnevnika: true, istina: 'saobshteno', vajnost: 1, red: red + 2, izvori: s22 ? [s22] : [],
+      tekst: 'Поправка към записа за 23.09: общите работници са били 7, не 6 — разликата от 1 човек е изяснена (въведен късно в Присъствия).', vav_versiq: 3, obnovena_v: null, predishen_tekst: null, prodalzhenie: null });
+    a24.zapis_md = String(a24.zapis_md)
+      .replace('\n\n## 4. ', '\n- Поправка към записа за 23.09: общите работници са били 7, не 6' + (s22 ? ' [22]' : '') + '. ⟦32⟧\n\n## 4. ')
+      .replace('\n\n## 8. ', '\n- Закъснели за 23.09: надзорът потвърди огледа на армировката на +9,30 за понеделник, 10:00 [20]. ⟦31⟧\n\n## 8. ')
+      .replace('Съобщения: 52 · мейли: 12 · снимки: 30.', 'Съобщения: 52 · мейли: 12 · снимки: 30.\n- Метео: Open-Meteo, Демо град (модел за града)\n- Закъснели за 23.09: 2 (дошли след одобрението)\n- Обновено в 17:20: +2 нови · 2 обновени');
+    if (d23) D.saobshteniq.push({ id: ++D.seq, den_id: d23.id, obekt: 'ag', data: d23.data, kluch: '2026-09-23_184000_mail.txt', vid: 'mail', msg_id: null, vreme: T('2026-09-23T21:40:00+03:00'),
+      sazdadeno: T('2026-09-23T23:05:00+03:00'), avtor: 'nadzor@primer.test', izvor_vid: 'mail', izvor: null, tema: 'Оглед на армировката +9,30', otgovor: null, do_kopie: 'Копие: demo.tehnik@primer.test',
+      tekst: 'Здравейте,\n\nПотвърждаваме огледа на армировката на плоча +9,30 в сграда 2 — понеделник, 10:00.\n\nПоздрави,\nнадзорът', link: null, snimki_broi: 0, failove: [], original_url: 'demo:', belejka: null });
+    // съобщенията: кога са дошли в базата (sazdadeno) — в демото = часа на съобщението
+    D.saobshteniq.forEach(function (r) { if (!r.sazdadeno) r.sazdadeno = r.vreme; });
+    // регистърът на приложенията: Амур 24.09 — 7 (5 прочетени, 1 само по име, 1 „не може“ → информация, не липса); от 01.09 — ~40
+    function DK(o, data, ime, st, x) {
+      return Object.assign({ id: ++D.seq, obekt: o, data: data, kade: 'Файлове/' + ime, ime: ime, razshirenie: ((/\.[^.]+$/.exec(ime) || [''])[0]).toLowerCase(), status: st, prichina: null, kratko: null,
+        vajen: false, podatel: null, tema: null, vreme: T(data + 'T10:00:00+03:00'), url: 'demo:' }, x || {});
+    }
+    D.dokumenti.push(
+      DK('ag', a24.data, 'Протокол-118-демо.pdf', 'prochet', { kratko: 'Протокол № 118 — 7-дневни кубчета от плоча +6,20: 31,2 MPa (C25/30)', vajen: true, podatel: 'laboratoria@primer.test', tema: 'Протокол № 118' }),
+      DK('ag', a24.data, 'Товарителници-демо.pdf', 'prochet', { kratko: 'Две товарителници — 24 м³ C25/30, 09:10 и 10:05', podatel: 'beton@primer.test', tema: 'Товарителници 24.09' }),
+      DK('ag', a24.data, 'Протокол-демо.xlsx', 'prochet', { kratko: 'Количествена сметка за поредния акт по кофража', vajen: true, podatel: 'kofrazh@primer.test', tema: 'Количествена сметка — пореден акт' }),
+      DK('ag', a24.data, 'Демо фактура 101.pdf', 'prochet', { kratko: 'Демо фактура 101 — кофраж, поредният акт', vajen: true, podatel: 'kofrazh@primer.test', tema: 'Фактура към акта' }),
+      DK('ag', a24.data, 'Демо писмо надзор.docx', 'prochet', { kratko: 'Писмо на надзора — огледът на армировката е след ос 4', podatel: 'nadzor@primer.test', tema: 'Огледът на армировката' }),
+      DK('ag', a24.data, 'Демо план +9,30.dwg', 'samo_ime', { prichina: 'чертеж', podatel: 'pto@primer.test', tema: 'План +9,30' }),
+      DK('ag', a24.data, 'Демо сканиран акт.pdf', 'ne_moje', { prichina: 'сканиран — нечетим и като картинка', podatel: 'investitor@primer.test', tema: 'Акт — сканиран', url: null }));
+    var IM = [['Демо фактура 1{n}.pdf', 'prochet', null, 'Демо фактура 1{n} — материали'], ['Демо оферта {n}.pdf', 'prochet', null, 'Демо оферта {n} — скеле'], ['Демо снимка {n}.jpg', 'samo_ime', 'снимка'],
+      ['Демо график {n}.xlsx', 'prochet', null, 'Демо график — фасада, седмица {n}'], ['Демо протокол {n}.pdf', 'prochet', null, 'Демо протокол {n} — приемане на армировка'], ['Демо договор {n}.pdf', 'ne_moje', 'защитен с парола'],
+      ['Демо писмо {n}.msg', 'samo_ime', 'писмо в писмото — виж основния мейл'], ['Демо сметка {n}.xlsx', 'prochet', null, 'Демо количествена сметка {n}'], ['Демо акт {n}.pdf', 'ne_moje', 'сканиран — нечетим и като картинка'],
+      ['Демо справка {n}.pdf', 'otlojen', 'таван 12 на ден — следващият пуск'], ['Демо писмо {n}.pdf', 'prochet', null, 'Демо писмо {n} — график на доставките'], ['Демо архив {n}.7z', 'samo_ime', 'архив — без разархивиране'],
+      ['Демо фактура 2{n}.pdf', 'prochet', null, 'Демо фактура 2{n} — услуги'], ['Демо протокол {n}b.pdf', 'ne_moje', 'повреден'], ['Демо писмо {n}.docx', 'nov', null], ['Демо оферта {n}b.pdf', 'prochet', null, 'Демо оферта {n} — кофраж']];
+    for (var i = 0, dt = parseD('2026-09-01'); dt <= parseD('2026-09-23'); dt.setDate(dt.getDate() + 1)) {
+      if (dt.getDay() === 0 || dt.getDay() === 6) continue;
+      [0, 1].forEach(function (j) {
+        var x = IM[(i + j * 5) % IM.length], n = 10 + i * 2 + j, ime = x[0].replace('{n}', n);
+        if (j && i % 2) return;   // ~1,5 на ден
+        D.dokumenti.push(DK(i % 2 ? 'soft' : 'ag', ymd(dt), ime, x[1], { prichina: x[2] || null, kratko: x[3] ? x[3].replace('{n}', n) : null, vajen: /фактура|договор/i.test(ime), podatel: 'office@primer.test', tema: 'Документи ' + ddmm(dt) }));
+      });
+      i++;
+    }
+    // мерилото: седмицата е започнала на 21.09 (първият ред aktivno_*) — минути по екран и ръчните „извън AiLab“ за 2 вечери
+    [['2026-09-21', 900, 180, 60], ['2026-09-22', 700, 240, 0], ['2026-09-23', 1100, 120, 90]].forEach(function (x) {
+      var kg = T(x[0] + 'T23:20:00+03:00');
+      D.metriki.push({ id: ++D.seq, vid: 'aktivno_pregled_sek', stoinost: x[1], den_id: null, kogda: kg }, { id: ++D.seq, vid: 'aktivno_tablo_sek', stoinost: x[2], den_id: null, kogda: kg });
+      if (x[3]) D.metriki.push({ id: ++D.seq, vid: 'aktivno_zadachi_sek', stoinost: x[3], den_id: null, kogda: kg });
+    });
+    [['2026-09-22', 25, 40, 15], ['2026-09-23', 20, 35, null]].forEach(function (x) {
+      var kg = T(x[0] + 'T12:00:00+03:00');
+      [['intranet', x[1]], ['poshta', x[2]], ['dokladi', x[3]]].forEach(function (z) { if (z[1] != null) D.metriki.push({ id: ++D.seq, vid: 'izvan_' + z[0] + '_min', stoinost: z[1], den_id: null, kogda: kg }); });
+    });
   }
   // ---- Етап 5 (§6.5): Присъствия, Интранетът, „📘/🚫“ — всичко измислено ----
   function demoE5(k23) {
@@ -7368,7 +8315,8 @@
     }
     // днешните съобщения след черновата — без den_id, по (обект, дата) → „📥 Днес досега“ [§5.14]
     var dn = { obekt: 'ag', data: '2026-09-24' }, dk = { obekt: 'soft', data: '2026-09-24' };
-    dMsg(dn, { hm: '17:25', tekst: 'Утре от 07:00 започваме армировката на +9,30 — кранът е запазен за нас до 10:00.' });
+    // Стъпка 1а: 16:55 — преди снимката „събрано до“ (17:02); 17:31, 17:36 и 17:38 — „След черновата: 💬 2 · ✉️ 1“
+    dMsg(dn, { hm: '16:55', tekst: 'Утре от 07:00 започваме армировката на +9,30 — кранът е запазен за нас до 10:00.' });
     dMsg(dn, { hm: '17:31', avtor: 'бригадир фасада', izvor_vid: 'chat', izvor: 'Амур Гардънс', tekst: 'Палетите с клинкер са преместени до сграда 4.' });
     dMsg(dn, { hm: '17:36', avtor: 'Demo Tehnik', izvor_vid: 'chat', izvor: 'чат на ПТО', tekst: 'Писмото до доставчика на арматура е пратено — чакаме отговор до утре на обяд.' });
     dMsg(dn, { hm: '17:38', vid: 'mail', avtor: 'snab@primer.test', tema: 'Клинкер за сграда 4 — потвърждение', do_kopie: 'Копие: demo.tehnik@primer.test',
@@ -7456,6 +8404,36 @@
     return k === 'spi' ? '💻 Лаптопът спи — ' + (D && D.spi ? 'вкл.' : 'изкл.') : k === 'tv' ? '+ Тиймс от вчера — ' + (D && D.teamsV ? 'вкл.' : 'изкл.')
       : 'Без таблиците на Етап 6 — ' + (D && D.e6No ? 'вкл.' : 'изкл.');
   }
+  // ---- Стъпка 1а — демо панел ----
+  var DEMO_PS = ['няма запис', 'въведени след черновата', 'въведени преди черновата'];
+  function demo1aLbl(k) {
+    if (!D) return '';
+    if (k === 'pris') return '👷 Присъствия Амур 24.09: ' + DEMO_PS[D.prisSled || 0] + ' ⇄';
+    if (k === 'sled') return '✉️ Без съобщения след черновата — ' + (D.sledNo ? 'вкл.' : 'изкл.');
+    if (k === 'disk') return '💽 C: ' + D.disk + ' GB → ' + (D.disk === 33 ? 12 : D.disk === 12 ? 7 : 33) + ' GB';
+    if (k === 'ne') return '📝 Пускът не е тръгнал — ' + (D.cikal === 'ne' ? 'вкл.' : 'изкл.');
+    if (k === 'tece') return '⏳ Обновяване тече — ' + (D.cikal === 'tece' ? 'вкл.' : 'изкл.');
+    if (k === 'dok') return '📎 Без регистъра на приложенията — ' + (D.dokNo ? 'вкл.' : 'изкл.');
+    return '';
+  }
+  function demo1aPaint(el, k, msg) {
+    if (el) { el.textContent = demo1aLbl(k); if (el.hasAttribute('aria-pressed')) el.setAttribute('aria-pressed', String(k === 'sled' ? !!D.sledNo : k === 'dok' ? !!D.dokNo : k === 'ne' ? D.cikal === 'ne' : k === 'tece' ? D.cikal === 'tece' : false)); }
+    if (msg) toast(msg);
+  }
+  function demoPrisSled(el) {
+    D.prisSled = ((D.prisSled || 0) + 1) % 3; D.prisystvie = demoPris(D.prisLong);
+    demo1aPaint(el, 'pris', 'Демо: Присъствия Амур 24.09 — ' + DEMO_PS[D.prisSled]);
+    demoPrisReset();
+  }
+  function demoSledNo(el) { D.sledNo = !D.sledNo; SLED = {}; demo1aPaint(el, 'sled', D.sledNo ? 'Демо: нищо ново след черновата' : 'Демо: 3 съобщения след черновата'); if (S.den) den1aLoad(); }
+  function demoDisk(el) { D.disk = D.disk === 33 ? 12 : D.disk === 12 ? 7 : 33; demo1aPaint(el, 'disk', 'Демо: C: ' + D.disk + ' GB свободни'); demoSvRefresh(); }
+  function demoCikal(el, k) {
+    D.cikal = D.cikal === k ? '' : k;
+    Array.prototype.forEach.call(document.querySelectorAll('[data-a="dCikalNe"],[data-a="dCikalTece"]'), function (b) { demo1aPaint(b, b.getAttribute('data-a') === 'dCikalNe' ? 'ne' : 'tece'); });
+    toast(k === 'ne' ? (D.cikal ? 'Демо: пускът в 22:45 не е тръгнал' : 'Демо: пускът е минал') : (D.cikal ? 'Демо: обновяването тече' : 'Демо: обновяването свърши'));
+    demoSvRefresh();
+  }
+  function demoDokNo(el) { D.dokNo = !D.dokNo; DOK = { den: {}, all: null, allSt: '', allAt: 0, allErr: null, lst: {} }; demo1aPaint(el, 'dok', D.dokNo ? 'Демо: таблицата dokumenti я няма — както преди 010' : 'Демо: регистърът пак има'); if (S.den) den1aLoad(); dokAllLoad(true); }
   // Присъствия: Амур 120 дни, Скай 95 (започва по-късно — [К20]); 3 делника без запис; 1 ден със стойност с часове;
   // нето = dni.hora, освен Амур 23.09 (49 ↔ 50) и Скай 24.09 (41 ↔ 38) — за „разлика“. dulga → ~1 300 реда (2 страници [К4]).
   function demoPris(dulga) {
@@ -7485,12 +8463,15 @@
       for (var i = x[1] - 1; i >= 0; i--) {
         var dt = new Date(END.getFullYear(), END.getMonth(), END.getDate() - i), k = ymd(dt), wd = dt.getDay(), key = o + ':' + k, h = H[key];
         if (NONE[key] || wd === 0) continue;
+        // Стъпка 1а [§6.11]: Амур 24.09 — по подразбиране още няма запис (в 19:00 почти никога); демо панелът ⇄ „след/преди черновата“
+        var vz = D.a24vzeto ? Date.parse(D.a24vzeto) : 0, sinhr = null;
+        if (key === 'ag:2026-09-24') { if (!D.prisSled) continue; sinhr = new Date(vz + (D.prisSled === 1 ? 25 : -30) * 60000).toISOString(); }
         if (wd === 6 && h == null && i % 14 !== 6) continue;   // повечето съботи — без работа
         var N = SPEC[key] != null ? SPEC[key] : h != null ? h : (o === 'ag' ? 44 + (i * 7) % 19 : 29 + (i * 5) % 12) - (wd === 6 ? (o === 'ag' ? 26 : 18) : 0);
         var pb = razbij(o, N, wd === 6, k), ob = 0, ne = 0;
         pb.forEach(function (y) { ob += y.broi; if (y.net) ne += y.broi; });
-        out.push({ obekt: o, data: k, po_brigadi: pb, obshto: ob, neto: ne, obnoveno_ot: null, v_izvora: true,
-          obnoveno_v: T(k + (o === 'soft' ? 'T09:35:00+03:00' : k === '2026-09-24' ? 'T16:35:00+03:00' : 'T20:40:00+03:00')) });
+        var ov = sinhr || T(k + (o === 'soft' ? 'T09:35:00+03:00' : k === '2026-09-24' ? 'T16:35:00+03:00' : 'T20:40:00+03:00'));
+        out.push({ obekt: o, data: k, po_brigadi: pb, obshto: ob, neto: ne, obnoveno_ot: null, v_izvora: true, obnoveno_v: ov, sinhr: ov });
       }
     });
     return out;
