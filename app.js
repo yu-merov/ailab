@@ -1,3 +1,5 @@
+// AiLab · Стъпка 3 (tools\STAPKA3-SPEC.md, ЧАСТ А) — „Чака теб“, сутрешният лист, „Какво излезе“, „Спри всичко изходящо“, „Хора и фирми“,
+// „Документи“. Картите ги пише само лаптопът (ailab-chaka.ps1); телефонът чете и дописва отговорите (chaka_otgovori). Върху Стъпка 1а:
 // AiLab · Стъпка 1а (tools\STAPKA1A-SPEC.md, ЧАСТ А) — „Събрано до …“, нова версия без загуба на отговорите, „↳ продължение“, закъснели,
 // приложенията, времето, мерене. Решение 1 на РП (19.10, „В“): черновата на днешния ден в 19:00 и обновяване в 22:45. Върху Етап 6:
 // AiLab · Етап 6 (tools\ETAP6-SPEC.md, ЧАСТ А) — „🗂️ Източниците на деня“, връзките между източниците, „✉ Питай по мейл“, 🚫 в Табло,
@@ -25,6 +27,7 @@
   }
   applyLook();
   var QS_OBEKT = (/[?&]obekt=(ag|soft)(&|$)/.exec(QS) || [])[1] || null;
+  var START_HASH = location.hash || '';   // 3 [Р1, §6.6]: „старт без адрес“ — за таба при отваряне и за сутрешния лист
   var OBEKT_KOD = 'ag';                // обектът на екран „Ден“ — сменя се от Таблото и от „⇄“ (setObekt)
   var POLL_MS = DEMO ? 5000 : 20000;   // докато денят е отворен: статус, нова версия, опашка
   var STALE_H = 6;                     // източник, по-стар от толкова часа = застарял (кехлибарено)
@@ -57,8 +60,8 @@
   // ---------- помощни ----------
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); }
   function pad(n) { return String(n).padStart(2, '0'); }
-  var T0 = Date.now(), DEMO_NOW = Date.parse('2026-09-24T17:42:00+03:00');
-  function nowMs() { return DEMO ? DEMO_NOW + (Date.now() - T0) : Date.now(); }
+  var T0 = Date.now(), DEMO_NOW = Date.parse('2026-09-24T17:42:00+03:00'), DEMO_SHIFT = 0;   // 3: „⏰ Мини един ден“ (демо) мести часовника
+  function nowMs() { return DEMO ? DEMO_NOW + DEMO_SHIFT + (Date.now() - T0) : Date.now(); }
   function now() { return new Date(nowMs()); }
   function nowIso() { return now().toISOString(); }
   function hhmm(d) { d = d || now(); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
@@ -195,13 +198,17 @@
   var SAOB_COLS = 'id,den_id,data,kluch,vid,vreme,avtor,izvor_vid,izvor,tema,otgovor,do_kopie,tekst,link,snimki_broi,failove,original_url,belejka';
   var SP_COLS = 'vid,stoinost,ime,grupa,obekt,red,skrit,aktiven,obnoveno';
   // Етап 5 (008_etap5.sql): Интранетът — копие на „Моите задачи“ (без отпечатъците); адресът идва само от link [§3.3]
-  var IZ_COLS = 'tid,opisanie,tema,obekt,otgovornik,vazlozhil,ekip,prioritet,srok,status,sazdadena,zavarshena,na_men,ot_men,v_ekipa,komentari,kontrolni,link,detajli_v,vidqna_posledno,obnoveno';
+  // Стъпка 3 [§6.1]: + vidqna_parvo — за ① на сутрешния лист („нови от последния делник“)
+  var IZ_COLS = 'tid,opisanie,tema,obekt,otgovornik,vazlozhil,ekip,prioritet,srok,status,sazdadena,zavarshena,na_men,ot_men,v_ekipa,komentari,kontrolni,link,detajli_v,vidqna_posledno,obnoveno,vidqna_parvo';
   var E4 = { act: true };   // false → колоните на Етап 4 ги няма (преди 005): заявките на задачите минават на старите [§2]
   // Стъпка 1а (010_stapka1a.sql): без новите колони → тихо старите заявки (isNoCol), досегашното поведение [1а §6]
   var E1A = { head: true, cnt: true, pris: true };
   var HEAD0 = 'id,versiq,status,hesh,obnoven,vpisan_pat';
   var DOK_COLS = 'id,kade,ime,razshirenie,status,prichina,kratko,vajen,podatel,tema,vreme,url';
   var DOK_OT = DEMO ? '2026-09-01' : '2026-10-01';   // регистърът на приложенията — от еднократното прочитане [1а §6.8]
+  // Стъпка 3 (011_stapka3.sql) [3 §3.1–§3.2, §6.1]: картите — всички колони без hesh; отговорите — + klient_id (двойният запис)
+  var CHK_COLS = 'id,kluch,vid,kanal,shablon,razdel,obekt,zaglavie,tekst,tekst_navan,izbori,poleta,grupa,izvori,iztochnik,vrazka,tid,agent,izvor_fajl,otgovornik,data,vajnost,prioritet,izticha,spomenata,versiq,status,sazdadena,obnovena';
+  var CHO_COLS = 'id,karta_id,kluch,podkluch,vid,tekst,danni,kogda,obraboteno,rezultat,klient_id';
   function isoMinus(ms) { return new Date(nowMs() - ms).toISOString(); }
   function actCols() { return ACT_COLS + (E4.act ? ACT_E4 : ''); }
   // 7а/7б със старите колони при 42703 (един път — после направо старите до следващото отваряне)
@@ -387,7 +394,25 @@
     tZap: function (ids) {
       if (!ids.length) return Promise.resolve([]);
       return R(function () { return db.from('dni').select('id,zapis_md').in('id', ids.slice(0, 10)).abortSignal(tsig()); });
-    }
+    },
+    // ---- Стъпка 3 (011_stapka3.sql): само SELECT; без таблиците → 42P01 → „още не е в облака“, Табло както досега [3 §6.1] ----
+    // две заявки: картите (активните/свитите + последните 7 дни) и редовете на сутрешния лист (последните 2 дни)
+    chaka: function () {
+      var ot7 = isoMinus(7 * 864e5), ot2 = isoMinus(2 * 864e5);
+      return Promise.all([
+        R(function () { return db.from('chaka_karti').select(CHK_COLS).neq('vid', 'red').or('status.in.(aktivna,svita),obnovena.gte.' + ot7).order('prioritet', { ascending: false }).order('id').limit(400).abortSignal(tsig()); }),
+        R(function () { return db.from('chaka_karti').select(CHK_COLS).eq('vid', 'red').gte('obnovena', ot2).limit(300).abortSignal(tsig()); })
+      ]).then(function (rr) { return { karti: rr[0] || [], redove: rr[1] || [] }; });
+    },
+    chakaOtg: function () { return R(function () { return db.from('chaka_otgovori').select(CHO_COLS).gte('kogda', isoMinus(35 * 864e5)).order('kogda').limit(3000).abortSignal(tsig()); }); },
+    izhodSt: function () { return R(function () { return db.from('izhod_sastoqnie').select('*').maybeSingle().abortSignal(tsig()); }); },
+    izhodLog: function () { return R(function () { return db.from('izhod_log').select('*').order('kogda', { ascending: false }).limit(100).abortSignal(tsig()); }); },
+    hora: function () { return R(function () { return db.from('hora_firmi').select('*').limit(2000).abortSignal(tsig()); }); },
+    // „📄 Документи“ — целият регистър от DOK_OT, по страници; важните от вчера насам — за ④ „Ново важно“
+    dokVse: function (rg) { return R(function () { return db.from('dokumenti').select(DOK_COLS + ',obekt,data').gte('data', DOK_OT).order('data', { ascending: false }).order('id').range(rg[0], rg[1]).abortSignal(tsig()); }); },
+    dokVajni: function (ot) { return R(function () { return db.from('dokumenti').select(DOK_COLS + ',obekt,data').eq('vajen', true).gte('data', ot).order('data', { ascending: false }).limit(40).abortSignal(tsig()); }); },
+    // „в 23:30“ (мерилото на лаптопа) — последните 8 дни, за реда в Настройки
+    chaka2330: function (ot) { return R(function () { return db.from('metriki').select('stoinost,kogda').eq('vid', 'chaka_2330').gte('kogda', ot).limit(20).abortSignal(tsig()); }); }
   };
   // Всички страници по 1000 реда, докато дойде непълна [К4]
   var PAGE = 1000;
@@ -414,7 +439,7 @@
   function newQid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   // Ключът на натискането [К1]: всеки ред към resheniq/deistviq/deistviq_bel носи klient_id = qid (същият при всеки повторен опит)
   // → изгубен отговор + повторно изпращане дава 23505 („вече е там“), а не втори ред / втора задача в Интранета.
-  var KID_T = { resheniq: 1, deistviq: 1, deistviq_bel: 1 };
+  var KID_T = { resheniq: 1, deistviq: 1, deistviq_bel: 1, chaka_otgovori: 1 };   // 3 [§6.1]: + отговорите в „Чака теб“
   // hold (Етап 6, §5.6): записът влиза в опашката ВЕДНАГА, но „задържан“ (hold = кога е задържан, ≠ 0) — броячите, групите,
   // Табло и „Одобрявам“ го виждат като направен от първия миг; тръгва чак от undoCommit(). Опашката е JSON → никога Infinity.
   function enqueue(tbl, row, meta, at, qid, hold) {
@@ -432,7 +457,7 @@
   // Задържан от затворен прозорец на AiLab (убит насред 5-те с) → пуска се, щом е по-стар от 10 мин; своите (в UNDO) — никога [§5.6 т.9]
   function heldOrphans() {
     var own = {}, ch = false, n = Date.now();
-    Object.keys(UNDO).forEach(function (k) { if (UNDO[k].qid) own[UNDO[k].qid] = 1; });
+    Object.keys(UNDO).forEach(function (k) { if (UNDO[k].qid) own[UNDO[k].qid] = 1; (UNDO[k].more || []).forEach(function (m) { own[m.qid] = 1; }); });
     var q = queue().map(function (it) {
       if (!isHeld(it) || own[it.qid] || n - it.hold <= 600000) return it;
       ch = true; var x = Object.assign({}, it); delete x.hold; delete x.pauza; return x;
@@ -458,6 +483,7 @@
       return r;
     }
     if (r.den_id != null && tbl !== 'resheniq' && /den_id/.test(m)) { r.den_id = null; return r; }
+    if (tbl === 'chaka_otgovori' && r.karta_id != null) { r.karta_id = null; return r; }   // 3: картата я няма — отговорът се пази по kluch
     return null;
   }
   var E4_ROW = ['obekt', 'cel', 'danni', 'razqsnenie', 'zamenq', 'klient_id'];
@@ -493,6 +519,8 @@
     if (it.tbl === 'deistviq' && !has(S.deistviq)) S.deistviq.unshift(row);
     if (it.tbl === 'deistviq_bel' && !has(S.bel)) S.bel.unshift(row);
     if (it.tbl === 'resheniq' && row.vid === 'odobri') TB.odobri.push({ den_id: row.den_id, versiq: row.versiq });
+    // 3 [§6.1]: отговорът в „Чака теб“ — в паметта веднага (иначе картата „светва“ обратно до следващото зареждане)
+    if (it.tbl === 'chaka_otgovori' && !has(CH.otg)) CH.otg.push(row);
     // Таблото: записът вече е в базата — новите заявки 2 не връщат точката (TB.closed се чисти по-късно) [К23]
     var tid = it.row && it.row.tochka_id;
     if (tid != null && TB.closed[tid] && closingRow(it.tbl, it.row)) TB.closed[tid].sent = nowIso();
@@ -545,8 +573,10 @@
         }, function (e) {
           if (isNet(e) || isAuth(e)) { if (isNet(e)) FL.net = true; fin(); return; }
           // 1а [§6]: мерилото и „✕ не е продължение“ — отказ преди 010 (23514) или махната точка (23503) → тихо вън от опашката
-          if (it.tbl === 'metriki' && e && e.code === '23514' && /^(aktivno|izvan)_/.test((it.row && it.row.vid) || '')) MER.off = true;
-          if (it.tbl === 'metriki' || (it.tbl === 'resheniq' && it.row && it.row.vid === 'vrazka_ne' && e && (e.code === '23514' || e.code === '23503'))) dropQ(it.qid);
+          // 3 [§6, §6.1]: „aktivno_chaka_sek“ преди 011 → само мерилото на „Чака теб“ спира (не цялото); отговор преди 011 (42P01) → тихо вън
+          if (it.tbl === 'metriki' && e && e.code === '23514' && it.row && it.row.vid === 'aktivno_chaka_sek') CH.merOff = true;
+          else if (it.tbl === 'metriki' && e && e.code === '23514' && /^(aktivno|izvan)_/.test((it.row && it.row.vid) || '')) MER.off = true;
+          if (it.tbl === 'metriki' || (it.tbl === 'chaka_otgovori' && isMissing(e)) || (it.tbl === 'resheniq' && it.row && it.row.vid === 'vrazka_ne' && e && (e.code === '23514' || e.code === '23503'))) dropQ(it.qid);
           else {
             setQueue(queue().map(function (x) { return x.qid === it.qid ? Object.assign({}, x, { err: errBg(e), code: e.code || '' }) : x; }));
             bad++;
@@ -939,9 +969,9 @@
   var ISTINA = { saobshteno: ['съобщено', 'p-neutral'], provereno: ['✅ проверено', 'p-ok'], osporeno: ['оспорено', 'p-bad'] };
   // 1а [§4.7, §6.1]: + Приложения, C: и Чернова (пишат ги лаптопът/пазачът); те не застаряват по часа и не се броят в „N от M свежи“
   var IZ = { teams: ['Тиймс', '💬'], poshta: ['Поща', '✉️'], prisystvia: ['Присъствия', '👷'], intranet: ['Интранет', '🗂️'], server: ['Сървър', '🗄️'], laptop: ['Лаптоп', '💻'],
-    prilojeniq: ['Приложения', '📎'], disk: ['C:', '💽'], chernova: ['Чернова', '📝'] };
-  var IZ_RED = ['teams', 'poshta', 'intranet', 'prisystvia', 'prilojeniq', 'laptop', 'disk', 'chernova', 'server'];
-  var SV_NEBROI = { disk: 1, chernova: 1, laptop: 1, prilojeniq: 1 };
+    prilojeniq: ['Приложения', '📎'], disk: ['C:', '💽'], chernova: ['Чернова', '📝'], chaka: ['Чака теб', '📬'] };   // 3 [§6.1]: + „Чака теб“
+  var IZ_RED = ['teams', 'poshta', 'intranet', 'prisystvia', 'prilojeniq', 'laptop', 'disk', 'chernova', 'chaka', 'server'];
+  var SV_NEBROI = { disk: 1, chernova: 1, laptop: 1, prilojeniq: 1, chaka: 1 };
   // Каналът на източник по истинските tip („Тиймс чат“, „Тиймс канал“, „Мейл“, „Протокол“, „Присъствия“, „Интранет“) [ETAP6 §5.3]:
   // чат + канал = един канал (Тиймс); 1а [§4.5]: „Метео“ — времето (Open-Meteo, модел за града); всичко друго — файл
   function kanalOf(tip) {
@@ -967,6 +997,7 @@
 
   // ---------- заглавие на всеки екран: името + едно изречение „какво е това“ (§3.2) ----------
   var SCR = {
+    chaka: ['Чака теб', 'Само нещата за твое решение — всяко с готов отговор и едно докосване'],
     tablo: ['Табло', 'Какво става на обектите и какво чака теб'],
     day: ['Преглед', 'Черновата на деня: мини по точките и одобри'],
     deistviq: ['Задачи', 'Каквото си поискал: за теб, възложени, напомняния, срещи, искания — и докъде са стигнали'],
@@ -1010,6 +1041,8 @@
     if (WIDE) renderPan(true);
     centerStrip();
     if (S.flash && S.den && S.flash.den === S.den.id) setTimeout(flashPoint, 80);   // от Таблото: точката светва
+    // 3 [§4.1]: „✓ Одобри …“ от „Чака теб“ → денят се отваря и веднага — съществуващият лист „Одобряваш ли деня?“
+    if (S.apprNext && S.den && S.den.id === S.apprNext) { S.apprNext = null; setTimeout(function () { if (view === 'day' && S.den && !sheetEl) openApprove(); }, 160); }
   }
   // Избраният ден — в средата на лентата (и при „Стари първо“); на широк екран — в средата на колоната с дните
   function centerStrip() {
@@ -1875,12 +1908,22 @@
   }
 
   // ---- 1а [§6.5, §4.6]: „↳ продължение на …“ (само в AiLab; „✕“ маха връзката с едно докосване) ----
-  function prdOf(t) { var p = t ? jObj(t.prodalzhenie) : null; return p && p.kratko && (p.tid != null || (p.data && p.k != null)) ? p : null; }
+  // 3 [§6.5]: „sigurno: false“ (черновата не е сигурна) НЕ е обикновеният „↳“ — докато РП не каже „Да“, е въпрос (prdQ)
+  function prdRaw(t) { var p = t ? jObj(t.prodalzhenie) : null; return p && p.kratko && (p.tid != null || (p.data && p.k != null)) ? p : null; }
+  function prdOf(t) { var p = prdRaw(t); return p && p.sigurno === false && chPrdAns(t) !== 'da' ? null : p; }
+  function prdQ(t) { var p = prdRaw(t); return p && p.sigurno === false && !chPrdAns(t) ? p : null; }
   function vrazkaNe(t, q) {
     if (S.res.some(function (r) { return r.vid === 'vrazka_ne' && r.tochka_id === t.id; })) return true;
     return (q || queue()).some(function (it) { return it.tbl === 'resheniq' && it.row && it.row.vid === 'vrazka_ne' && it.row.tochka_id === t.id; });
   }
   function prdHtml(t, q) {
+    var pq = prdQ(t);
+    if (pq && !vrazkaNe(t, q)) {
+      var lq = pq.tid != null ? String(pq.kratko) : dvDat(pq.data, true) + ' ' + pq.kratko;
+      return '<div class="prd prd-q"><span class="prd-l q"><span aria-hidden="true">↳</span> може би продължение на: ' + esc(lq) + ' ?</span>' +
+        '<button type="button" class="prd-y" data-a="prdDa" data-tid="' + esc(t.id) + '" aria-label="Да, продължение е">Да</button>' +
+        '<button type="button" class="prd-y" data-a="prdNe2" data-tid="' + esc(t.id) + '" aria-label="Не е продължение">Не</button></div>';
+    }
     var p = prdOf(t); if (!p || vrazkaNe(t, q)) return '';
     var lbl = p.tid != null ? String(p.kratko) : dvDat(p.data, true) + ' ' + p.kratko;
     return '<div class="prd"><button type="button" class="prd-l" data-a="prd" data-tid="' + esc(t.id) + '"><span aria-hidden="true">↳</span> продължение на: ' + esc(lbl) + ' ›</button>' +
@@ -2161,6 +2204,7 @@
     if (!DOK.all) return dokMsg(DOK.allSt, DOK.allErr);
     var b = dokBroi(DOK.all), ag = DOK.all.filter(function (r) { return r.obekt === 'ag'; }).length, sk = DOK.all.filter(function (r) { return r.obekt === 'soft'; }).length, ob = b.n - ag - sk, nn = b.nov + b.otlojen;
     return '<p class="dok-s">' + ['Амур ' + ag, 'Скай ' + sk].concat(ob ? ['Общо ' + ob] : []).concat(['прочетени ' + b.prochet, 'само по име ' + b.samo_ime, 'не може ' + b.ne_moje, dokNp(b)]).join(' · ') + '</p>' +
+      '<button type="button" class="btn ghost" data-a="dokVse"' + (b.n ? '' : ' disabled') + '>Всички (' + b.n + ') ›</button>' +   // 3 [§6.8]
       '<div class="dok-b"><button type="button" class="btn ghost sb" data-a="dokSh" data-v="ne"' + (b.ne_moje ? '' : ' disabled') + '>Не може — защо (' + b.ne_moje + ') ›</button>' +
       '<button type="button" class="btn ghost sb" data-a="dokSh" data-v="nov"' + (nn ? '' : ' disabled') + '>Непрочетени (' + nn + ') ›</button></div>' +
       '<p class="small muted">Всеки файл от мейлите и Тиймс получава статус, когато лаптопът пише черновата: прочетен, само по име (чертеж, снимка, архив) или „не може“ с причината. Непрочетените (и отложените заради тавана 12 на ден) ги чете следващият пуск.</p>';
@@ -2206,8 +2250,9 @@
   // SES — текущият отрязък; при смяна на екран/ден, скриване и на 10 мин → един ред metriki (≥ 5 с), kogda = краят на отрязъка
   var SES = { v: '', den: null, ms: 0, poslDok: 0, last: Date.now(), t10: Date.now() };
   var MER = { rows: null, st: '', at: 0, start: null, startSt: '', off: false, zatv: {} };
-  var MER_V = { pregled: 'Преглед', tablo: 'Табло', zadachi: 'Задачи', nastroiki: 'Настройки' };
-  function sesKey() { return view === 'day' ? 'pregled' : view === 'tablo' ? 'tablo' : view === 'deistviq' ? 'zadachi' : view === 'nastroiki' ? 'nastroiki' : ''; }
+  var MER_V = { chaka: 'Чака теб', pregled: 'Преглед', tablo: 'Табло', zadachi: 'Задачи', nastroiki: 'Настройки' };
+  // 3 [§6.1]: + „Чака теб“ (aktivno_chaka_sek); отказано преди 011 → само то спира (CH.merOff)
+  function sesKey() { return view === 'day' ? 'pregled' : view === 'tablo' ? 'tablo' : view === 'deistviq' ? 'zadachi' : view === 'nastroiki' ? 'nastroiki' : view === 'chaka' && !CH.merOff ? 'chaka' : ''; }
   function sesAkt() { SES.poslDok = Date.now(); }
   function sesTick() {
     var n = Date.now(), dt = n - SES.last, k = sesKey(), dn = k === 'pregled' && S.den ? S.den.id : null;
@@ -2265,7 +2310,7 @@
     if (MER.off) return '<p class="small muted">Мерилото още не е готово в базата (лаптопът я обновява).</p>';
     if (!MER.rows) return MER.st === 'net' ? '<p class="small muted">📴 Когато има покритие.</p>' : MER.st === 'missing' || MER.st === 'err' ? '<p class="small muted">Не се зареди — опитай по-късно.</p>' : '<p class="small muted"><span class="pulse" aria-hidden="true"></span> зареждам…</p>';
     var by = merDni(), t = ymd(now()), x = by[t] || { a: {}, sum: 0, iz: {} }, ot = ymd(new Date(nowMs() - 6 * 864e5));
-    var dnes = 'Днес: ' + mn(x.sum) + ' мин' + ['pregled', 'tablo', 'zadachi', 'nastroiki'].filter(function (k) { return x.a[k] >= 30; }).map(function (k) { return ' · ' + MER_V[k] + ' ' + mn(x.a[k]); }).join('');
+    var dnes = 'Днес: ' + mn(x.sum) + ' мин' + ['chaka', 'pregled', 'tablo', 'zadachi', 'nastroiki'].filter(function (k) { return x.a[k] >= 30; }).map(function (k) { return ' · ' + MER_V[k] + ' ' + mn(x.a[k]); }).join('');
     var dni = Object.keys(by).filter(function (k) { return k >= ot && k <= t && by[k].sum > 0; }), sum = 0, pr = 0;
     dni.forEach(function (k) { sum += by[k].sum; if (by[k].a.pregled) pr++; });
     // ръчните числа: средното за всеки вид — по дните, в които е попълнен (празното поле не е 0)
@@ -2332,6 +2377,8 @@
     u.t0 = Date.now(); u.at = nowIso(); u.qid = newQid();
     UNDO[u.key] = u;
     if (u.tbl) enqueue(u.tbl, u.row, u.meta, u.at, u.qid, true);   // в опашката от първия миг — задържан [т.1]
+    // 3: u.more = [{tbl, row}] — още редове под същото „Отмени“ (голямото ✓ на слята карта, „Не“ + vrazka_ne, „Не е точно“ + popravka)
+    if (u.tbl) (u.more || []).forEach(function (m) { m.qid = newQid(); enqueue(m.tbl, m.row, m.meta || null, u.at, m.qid, true); });
     if (u.now) u.now();
     if (u.run) u.run();
     u.timer = setTimeout(function () { undoCommit(u.key); }, UNDO_MS);
@@ -2346,6 +2393,7 @@
       // вече е пуснат (или изпратен) → нищо не се връща [т.6]
       if (!it || !isHeld(it)) { undoPaint(u, 'commit'); toast('Вече е записано — отмени от Задачи'); return; }
       dropQ(u.qid);
+      (u.more || []).forEach(function (m) { var im = findQ(m.qid); if (im && isHeld(im)) dropQ(m.qid); });
     }
     if (u.back) u.back();
     undoPaint(u, 'cancel');
@@ -2369,6 +2417,7 @@
     if (SHU === key) SHU = null;
     if (!u.tbl) { undoPaint(u, 'commit'); return; }
     if (findQ(u.qid)) unHold(u.qid);
+    (u.more || []).forEach(function (m) { if (findQ(m.qid)) unHold(m.qid); });
     if (u.pre) u.pre();
     undoPaint(u, 'commit');
     FL.net = false;
@@ -2409,7 +2458,9 @@
     var k = u.key + ':' + u.t0;
     if (force || b._k !== k) {
       b._k = k;
-      b.innerHTML = '<span class="ub-l">' + esc(u.lbl) + '</span><button type="button" class="ub-b" data-a="undo" data-k="' + esc(u.key) + '">Отмени</button>' +
+      // 3 [§4.1]: ✗ в „Чака теб“ → „Махнато · [Защо?] · [Отмени]“ (u.why — ключът на картата)
+      b.innerHTML = '<span class="ub-l">' + esc(u.lbl) + '</span>' + (u.why ? '<button type="button" class="ub-b w" data-a="chWhy" data-k="' + esc(u.why) + '">Защо?</button>' : '') +
+        '<button type="button" class="ub-b" data-a="undo" data-k="' + esc(u.key) + '">Отмени</button>' +
         '<i class="ub-p' + (u.paused ? ' pz' : '') + '" style="animation-duration:' + Math.max(0, UNDO_MS - (Date.now() - u.t0)) + 'ms" aria-hidden="true"></i>';
     }
     b.hidden = false; document.body.classList.add('ub-on');
@@ -2420,7 +2471,9 @@
     ubPaint();
     // листът „❓ Искането е записано“ е още отворен, а записът тръгна (скрито приложение) → бутонът отменя вече записаната задача
     if (ph === 'commit' && sheetKind === 'isk' && ISK && ISK.key === u.key && sheetEl) { var ib = sheetEl.querySelector('[data-a="iskUndo"]'); if (ib) ib.textContent = 'Отмени задачата'; }
-    if (ph === 'commit') { renderTabs(); renderBanners(); if (view === 'deistviq') renderActsTab(); else if (view === 'day') { renderActs(); renderIzt(); } return; }
+    if (ph === 'commit') { renderTabs(); renderBanners(); if (view === 'deistviq') renderActsTab(); else if (view === 'day') { renderActs(); renderIzt(); } else if (view === 'chaka') renderChaka(); return; }
+    if (view === 'chaka') renderChaka();   // 3: картата се свива/връща веднага
+    if (sheetKind === 'chlist') chListPaint();
     if (view === 'day') {
       var t = u.kind === 'pc' && u.tid != null ? findT(u.tid) : null;
       // картата излиза веднага (свиване 180 ms) → „Прегледани“; плочките „остават N“ и лентата — без да чакат свиването
@@ -2695,7 +2748,7 @@
   }
   function renderPan(force) {
     var el = $('#panT'); if (!el || !WIDE) return;
-    var t = panPoint(), key = t && S.den ? t.id + ':' + S.den.versiq + ':' + t.istina + ':' + (prdOf(t) && !vrazkaNe(t) ? 1 : 0) : '';
+    var t = panPoint(), key = t && S.den ? t.id + ':' + S.den.versiq + ':' + t.istina + ':' + (prdOf(t) && !vrazkaNe(t) ? 1 : 0) + (prdQ(t) ? 'q' : '') : '';
     if (!force && el._k === key) { panPhFill(); return; }
     el._k = key; el._h = null;
     if (!t) { el.innerHTML = '<div class="pan-c"><p class="grp-e">Няма точки за този ден — само „📄 Пълен запис“.</p></div>'; return; }
@@ -3310,26 +3363,42 @@
       'Има ли отговор или развитие по въпроса? Ако има документ или нов срок — моля, изпратете ги.\n\nБлагодаря!';
   }
   // o: {t, tid, den_id, o, data, izv | rows, fakt, ctx, zamenq, adresati, tema, k}
+  // 3 [§6.4]: + по желание {tekst, zaglavie, vidZapis ('iskane' | 'napomni' | 'otgovor' | 'nishto'), chKluch, chPk, chKarta, back}
+  //   (без тях — точно както досега); с vidZapis адресатът се избира сам само при ТОЧНО едно предложение
   function openPitai(o) {
     PIT = { tid: o.tid || null, k: o.k != null ? o.k : (o.t && o.t.k != null ? o.t.k : null), den_id: o.den_id != null ? o.den_id : null, o: o.o === 'ag' || o.o === 'soft' ? o.o : null,
       data: o.data || null, izv: o.izv || (o.t && o.t.izvori) || [], rows: o.rows || null, fakt: String(o.fakt || (o.t && o.t.tekst) || ''), ctx: o.ctx || null, zamenq: o.zamenq || null,
-      sel: {}, init: false, pre: Array.isArray(o.adresati) ? o.adresati : null, sug: null, key: null, ruchno: '', tema: '', tekst: '' };
-    PIT.tema = o.tema || ptTemaDef(PIT); PIT.tekst = ptTekstDef(PIT);
+      sel: {}, init: false, pre: Array.isArray(o.adresati) ? o.adresati : null, sug: null, key: null, ruchno: '', tema: '', tekst: '',
+      zaglavie: o.zaglavie || '✉ Питай за развитие', vid: o.vidZapis || 'iskane', strict: !!o.vidZapis, chKluch: o.chKluch || null, chPk: o.chPk || null, chKarta: o.chKarta || null,
+      back: o.back || null, sent: false, pratih: false, kid: null, napIme: o.napIme || null };
+    PIT.tema = o.tema != null && (o.tema || o.vidZapis) ? o.tema : ptTemaDef(PIT); PIT.tekst = o.tekst != null ? String(o.tekst) : ptTekstDef(PIT);
     spisaciLoad(false); adrLoad(); ptSrcLoad(PIT);
     ptOpen();
   }
+  // какво пише листът за записа според vidZapis (3 [§6.4])
+  function ptSavedTxt(x) { return x.vid === 'napomni' ? '✓ Напомнянето е записано в Задачи › Напомняния' : x.vid === 'iskane' ? '✓ Въпросът е записан в Задачи › Искания' : ''; }
+  function ptFoot(x) {
+    if (x.vid === 'napomni') return 'Нищо не се праща от AiLab — пращаш ти от Outlook. Който получи напомняне, не влиза в „Напомняния“ 7 дни.';
+    if (x.vid === 'otgovor' || x.vid === 'nishto') return 'Нищо не се праща от AiLab — пращаш ти от Outlook.';
+    return 'Нищо не се праща от AiLab — пращаш ти от Outlook. Въпросът се пази в Задачи › Искания и сутрешният пуск отбелязва, когато дойде отговор.';
+  }
   function ptOpen() {
     var x = PIT, ios = /iPhone|iPad|iPod/.test(navigator.userAgent || '') || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent || ''));
-    openSheet('✉ Питай за развитие', '<p class="sh-q">' + esc(clip(x.fakt, 300)) + '</p>' +
+    var sp = chSpran(), prOk = CH.st === 'ok';
+    openSheet(x.zaglavie, (x.fakt ? '<p class="sh-q">' + esc(clip(x.fakt, 300)) + '</p>' : '') +
+      (sp.spran ? '<p class="ch-stopl">⛔ Изходящото е спряно — AiLab не пуска нищо; това писмо го пращаш ти.</p>' : '') +
       '<div class="fld" role="group" aria-label="Кому">Кому<div id="ptK" class="pt-k"></div>' +
         '<input type="email" inputmode="email" id="ptTo" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="адрес@… — може няколко, с „;“" aria-label="Друг адрес" value="' + esc(x.ruchno) + '"></div>' +
       '<label class="fld">Тема<input type="text" id="ptTema" maxlength="200" autocomplete="off" value="' + esc(x.tema) + '"></label>' +
       '<label class="fld">Текст<textarea id="ptTx" rows="8">' + esc(x.tekst) + '</textarea></label>' +
-      '<div class="err" id="ptE" hidden></div><p class="pt-ok" id="ptS"' + (x.key ? '' : ' hidden') + '>✓ Въпросът е записан в Задачи › Искания</p>' +
+      '<div class="err" id="ptE" hidden></div><p class="pt-ok" id="ptS"' + (x.key && ptSavedTxt(x) ? '' : ' hidden') + '>' + esc(ptSavedTxt(x)) + '</p>' +
       '<button type="button" class="btn big" data-a="ptGo" data-k="mail">Отвори в пощата ›</button>' +
       (ios ? '<button type="button" class="lnk pt-ol" data-a="ptGo" data-k="ol">в Outlook ›</button>' : '') +
       '<button type="button" class="btn ghost" data-a="ptGo" data-k="copy">Копирай текста</button>' +
-      '<p class="small muted">Нищо не се праща от AiLab — пращаш ти от Outlook. Въпросът се пази в Задачи › Искания и сутрешният пуск отбелязва, когато дойде отговор.</p>', 'pitai');
+      // 3 [§6.4]: след първото „Отвори …“ / „Копирай“ — „✓ Пратих го“ → „📤 Какво излезе“ (само щом „Чака теб“ е в облака)
+      (prOk ? '<div class="pt-pr" id="ptP"' + (x.sent ? '' : ' hidden') + '><button type="button" class="btn big pt-prb" data-a="ptPratih"' + (x.pratih ? ' disabled' : '') + '>' + (x.pratih ? '✓ Пратено' : '✓ Пратих го') + '</button>' +
+        '<p class="small muted">Натисни, след като го пратиш от Outlook — влиза в „Какво излезе“.</p></div>' : '') +
+      '<p class="small muted">' + esc(ptFoot(x)) + '</p>', 'pitai');
     ptChips();
   }
   // текстовете на източниците (авторите, „Копие:“) — заявка М1 само за липсващите
@@ -3354,7 +3423,7 @@
     if (!x.init && (!busy || x.pre)) {
       x.init = true;
       if (x.pre) x.pre.forEach(function (a) { if (a && a.adres) x.sel[String(a.adres).toLowerCase()] = true; });
-      else if (s.list.length) x.sel[s.list[0].adres] = true;
+      else if (s.list.length && (!x.strict || s.list.length === 1)) x.sel[s.list[0].adres] = true;   // 3 [§6.4]: само при едно
     }
     var h = s.list.map(function (c, i) {
       var on = !!x.sel[c.adres];
@@ -3409,6 +3478,7 @@
     var x = PIT; if (!x) return;
     var v = ptRead(); if (!v) return;
     ptRecord(x, v);
+    if (!x.sent) { x.sent = true; var pp = $('#ptP'); if (pp) pp.hidden = false; }   // 3 [§6.4]: „✓ Пратих го“ — след първото натискане
     if (kind === 'copy') {
       copyText('Кому: ' + v.adrs.join('; ') + '\nТема: ' + v.tema + '\n\n' + v.tx).then(function (ok) { toast(ok ? 'Копирано — постави в Outlook.' : 'Не можах да копирам — задръж върху текста и го копирай.'); });
       return;
@@ -3421,6 +3491,18 @@
   function ptRecord(x, v) {
     if (x.key) return;
     var ad = v.adrs.map(function (a) { var c = (x.sug ? x.sug.list : []).filter(function (y) { return y.adres === a; })[0]; return { adres: a, ime: (c && c.ime) || adrIme(a) || null }; });
+    // 3 [§6.4]: „otgovor“/„nishto“ — без запис в Задачи; „napomni“ — задача-напомняне до човека (без „чака отговор“)
+    if (x.vid === 'otgovor' || x.vid === 'nishto') { x.key = 'nz:' + newQid(); return; }
+    if (x.vid === 'napomni') {
+      var nr = { den_id: null, tochka_id: null, vid: 'napomni', tekst: 'Напомнено на ' + (x.napIme || v.adrs[0]) + ': ' + clip(oneLine(v.tema).trim().replace(/^Напомняне:\s*/, ''), 160), chovek: x.napIme || v.adrs[0], srok: null,
+        izvor: 'AiLab · Напомни', obekt: x.o, cel: null, danni: { kanal: 'mail', adresati: ad, tema: v.tema, napomneno: nowIso(), chaka_kluch: x.chKluch || null, chaka_pk: x.chPk || null } };
+      var nredo = function () { x.key = null; if (PIT === x && sheetKind === 'pitai') { var s1 = $('#ptS'); if (s1) s1.hidden = true; return; } PIT = x; ptOpen(); };
+      x.key = zadaStart(nr, '✉ Напомняне записано', null, null, nredo, null);
+      if (UNDO[x.key]) x.kid = UNDO[x.key].qid;
+      shuPause(x.key);
+      var sn = $('#ptS'); if (sn) sn.hidden = false;
+      return;
+    }
     var k1 = (x.rows && x.rows[0] && x.rows[0].kluch) || (x.izv || []).map(srcKey).filter(Boolean)[0] || null;
     var row = { den_id: x.den_id, tochka_id: x.tid || null, vid: 'iskane', tekst: 'Въпрос до ' + v.adrs[0] + ': ' + clip(oneLine(x.fakt).trim(), 160), chovek: v.adrs[0], srok: null,
       izvor: 'AiLab · Питай', obekt: x.o, cel: null, danni: { kanal: 'mail', adresati: ad, tema: v.tema, pitano: nowIso(), kluch: k1, tochka_k: x.k != null ? x.k : null } };
@@ -3431,6 +3513,7 @@
       PIT = x; ptOpen();   // „Отмени“ след затворен лист → листът се връща с написаното [К22]
     };
     x.key = zadaStart(row, '✉ Питане записано', x.tid, x.ctx && x.ctx.src === 'tablo' ? x.ctx : (x.ctx && x.ctx.src === 'zad' ? null : x.ctx), redo, null);
+    if (UNDO[x.key]) x.kid = UNDO[x.key].qid;
     shuPause(x.key);
     var s0 = $('#ptS'); if (s0) s0.hidden = false;
   }
@@ -3462,9 +3545,9 @@
         ime = 'C: ' + (s.broi != null ? esc(Math.floor(+s.broi)) + ' GB' : '—');
         p = dl === 2 ? '<span class="pill p-bad">⚠️ под 8 GB — освободи място</span>' : dl === 1 ? '<span class="pill p-warn">⚠️ под 15 GB</span>' : '<span class="pill p-ok">✓</span>';
         cls = dl === 2 ? 'old bad' : dl === 1 ? 'old' : 'ok';
-      } else if (s.izvor === 'chernova' || s.izvor === 'prilojeniq') {   // кехлибарено само при ok = false; „чака отворен Outlook“ — неутрално
+      } else if (s.izvor === 'chernova' || s.izvor === 'prilojeniq' || s.izvor === 'chaka') {   // кехлибарено само при ok = false; „чака отворен Outlook“ — неутрално
         old = s.ok === false; br = s.izvor === 'prilojeniq' && s.broi != null ? ' · днес свалени ' + esc(s.broi) : '';
-        p = old ? '<span class="pill p-warn">⚠️ ' + (s.izvor === 'chernova' ? 'внимание' : 'грешка при сваляне') + '</span>'
+        p = old ? '<span class="pill p-warn">⚠️ ' + (s.izvor === 'chernova' || s.izvor === 'chaka' ? 'внимание' : 'грешка при сваляне') + '</span>'
           : s.izvor === 'chernova' && +s.broi === 1 ? '<span class="pill p-neutral">⏳ тече</span>' : '<span class="pill p-neutral">✓</span>';
         cls = old ? 'old' : 'calm';
       } else {
@@ -3568,7 +3651,7 @@
   var VID_SUB = { za_men: 'задача за теб — в To Do или в Интранета', vazlozhi: 'задача в Интранета за колега', napomni: 'в точен ден и час', sreshta: 'кога, къде, с кого', iskane: 'питаш някого за липсващото' };
   var VID_MN = { za_men: 'За мен', vazlozhi: 'Възложени', napomni: 'Напомняния', sreshta: 'Срещи', iskane: 'Искания' };
   // знакът и името на задачата; питането по мейл („✉ Питай“) е „искане“ с danni.kanal = 'mail' [ETAP6 §3.6]
-  function vidIme(a) { return isPitai(a) ? ['✉', 'Питане по мейл'] : VID[a.vid] || null; }
+  function vidIme(a) { return isPitai(a) ? ['✉', 'Питане по мейл'] : isNapMail(a) ? ['✉', 'Напомняне по мейл'] : VID[a.vid] || null; }
   // честните редове „как“ — от една константа, за да се сменят на едно място след решението на РП (§17 В2–В4) [К35]
   var KAK_NAPOMNQNE = 'Засега няма звън — ще я видиш в Табло и в значката на Задачи, когато наближи. Как да звъни — ще решиш (Настройки → Как ми напомняш).';
   var KAK_SRESHTA = 'Какво става: засега само се записва в AiLab и се вижда в Задачи (филтър Срещи) и в Табло, когато наближи. Покана до хората и календар — ще решиш.';
@@ -4019,9 +4102,10 @@
     }
     if (!key) {
       key = 'z:' + newQid();
-      undoStart({ key: key, kind: 'toast', lbl: lbl, tbl: 'deistviq', row: row, redo: redo,
-        now: function () { if (ctx && ctx.tid && ctx.close) noteClose(ctx.tid, ctx.o, ctx.d, false, null); },
-        back: function () { if (ctx && ctx.tid && ctx.close) unClose(ctx.tid); },
+      // 3 [§4.1]: „→ Задача“ от карта в „Чака теб“ — задачата и отговорът „да“ по картата са под едно „Отмени“ (ctx.chMore)
+      undoStart({ key: key, kind: 'toast', lbl: lbl, tbl: 'deistviq', row: row, redo: redo, more: ctx && ctx.chMore ? ctx.chMore : null,
+        now: function () { if (ctx && ctx.tid && ctx.close) noteClose(ctx.tid, ctx.o, ctx.d, false, null); if (ctx && ctx.chKluch) CH.done[ctx.chKluch] = 1; },
+        back: function () { if (ctx && ctx.tid && ctx.close) unClose(ctx.tid); if (ctx && ctx.chKluch) delete CH.done[ctx.chKluch]; },
         pre: function () { if (metr) metr(); if (ctx && ctx.src === 'tablo') tMeasure(); },
         done: function () { if (view === 'tablo') { renderOpen(true); refillOpen(); } } });
     }
@@ -4088,9 +4172,12 @@
   function isProba(a) { return a.status === 'zaqveno' && /^🧪/.test(a.belejka || ''); }
   // „✉ Питай по мейл“ — задача „искане“ с danni.kanal = 'mail' [ETAP6 §3.6]
   function isPitai(a) { return !!a && a.vid === 'iskane' && danniOf(a).kanal === 'mail'; }
+  // 3 [§6.4]: „✉ Напомни“ от „Чака теб“ — запис, че РП е напомнил на човек по мейл (пращал е сам); нищо не чака → „Приключени“
+  function isNapMail(a) { return !!a && a.vid === 'napomni' && danniOf(a).kanal === 'mail'; }
   function stOf(a) {
     if (a._err) return ST.err;
     if (a._pend) return ST.pend;
+    if (isNapMail(a)) { var nd = danniOf(a).napomneno || a.sazdadeno, nD = nd ? new Date(nd) : null; return ['✉ напомнено' + (nD && !isNaN(nD) ? ' · ' + ddmm(nD) : ''), 'p-neutral']; }
     if (lokalClosed(a)) return ST.lokal;
     // питане по мейл: „✉ чака отговор · от ДД.ММ“ (кехлибарено от 7 дни: „✉ чака отговор N дни“); отговорено → „✅ отговорено“ [§5.1]
     if (isPitai(a) && (a.status === 'zaqveno' || a.status === 'chaka_otgovor')) {
@@ -4141,7 +4228,7 @@
   function zadGroup(a) {
     if (a._err) return 'wait';
     if (a._q) return 'q';
-    if (lokalClosed(a) || a.status === 'izpalneno' || a.status === 'otmeneno') return 'done';
+    if (lokalClosed(a) || a.status === 'izpalneno' || a.status === 'otmeneno' || isNapMail(a)) return 'done';
     if (CHAKA_TEB.indexOf(a.status) >= 0) return 'wait';
     var t = a.srok ? Date.parse(a.srok) : NaN;
     if (!isNaN(t) && t <= nowMs() + 48 * 36e5) return 'soon';
@@ -4199,11 +4286,11 @@
   // ---------- ленти горе, листове, тостове ----------
   function renderBanners() {
     var el = $('#banners'); if (!el) return;
-    var h = '', live = view === 'day' || view === 'tablo' || view === 'deistviq' || view === 'nastroiki';
+    var h = '', live = view === 'day' || view === 'tablo' || view === 'deistviq' || view === 'nastroiki' || view === 'chaka';
     // 1а [§6.4]: един текст навсякъде (лентата, тостът, листът, долу) — „отговорите ти са запазени“
     if (view === 'day' && S.den && S.newVersiq > S.den.versiq) h += '<div class="bn bn-new"><span>' + esc(nvTxt()) + '</span><button type="button" class="bn-b" data-a="reload">Покажи новата версия</button></div>';
     if ((S.offline || S.forceOff) && live) {
-      var at = view === 'tablo' ? TB.at : view === 'day' ? S.dataAt : (S.actsAt || TB.at);
+      var at = view === 'tablo' ? TB.at : view === 'day' ? S.dataAt : view === 'chaka' ? (CH.atIso || TB.at) : (S.actsAt || TB.at);
       var old = !at || nowMs() - Date.parse(at) > 12 * 36e5;   // Таблото/Действия: кехлибарено чак когато запазеното е > 12 ч
       h += '<div class="bn bn-off' + (view !== 'day' && !old ? ' calm' : '') + '">📴 без покритие · данни към ' + esc(at ? rel(at) : '—') + '</div>';
     }
@@ -4250,7 +4337,8 @@
   function openSheet(title, body, kind, keepFocus) {
     var had = !!sheetEl;
     // листът над записа се сменя с друг → 5-те секунди „Отмени“ текат пак
-    if (had) { shuRelease(); if (sheetKind === 'isk') ISK = null; if (sheetKind === 'pitai' && kind !== 'pitai') PIT = null; if (sheetKind === 'izt' && kind !== 'izt') IZTS = null; }
+    if (had) { shuRelease(); if (sheetKind === 'isk') ISK = null; if (sheetKind === 'pitai' && kind !== 'pitai') PIT = null; if (sheetKind === 'izt' && kind !== 'izt') IZTS = null;
+      if (sheetKind === 'chlist' && kind !== 'chlist' && sheetEl.firstChild) CH.listY = sheetEl.firstChild.scrollTop || 0; }
     sheetKind = kind || '';
     if (sheetEl) { sheetEl.remove(); sheetEl = null; }
     if (!had) sheetPrev = document.activeElement;
@@ -4269,6 +4357,11 @@
   }
   function closeSheet() {
     if (!sheetEl) return;
+    // 3 [§6.4, §6.6]: лист, отворен от сутрешния лист („✉“, свежестта, задача) → при затваряне — обратно в сутрешния, на същото място
+    var backL = sheetKind !== 'chlist' && CH.backList;
+    if (sheetKind === 'chlist' && sheetEl.firstChild) CH.listY = sheetEl.firstChild.scrollTop || 0;
+    CH.backList = false;
+    setTimeout(function () { if (sheetEl) return; if (backL) chListOpen(true); else if (CH.listWait) chListAuto(); }, 0);
     shuRelease();
     if (sheetKind === 'isk') ISK = null;
     if (sheetKind === 'pitai') PIT = null;
@@ -4881,8 +4974,10 @@
   // Таблото живее в #tablo, който не се унищожава при смяна на таба: скролът и заредените порции се пазят [К2].
   // 4 таба с 4 различни силуета: дъга (уред) · висок лист с лупа (без ✓ [К28]) · редове с квадратчета · зъбно колело [§3.1].
   // Вътрешните имена на изгледите остават (day = Преглед, deistviq = Задачи). Класът „f“ = плътен фон (15 %) на активния таб.
-  var TABS = [['tablo', 'Табло'], ['day', 'Преглед'], ['deistviq', 'Задачи'], ['nastroiki', 'Настройки']];
+  // 3 [§6.2, Р1]: 5 таба — „Чака теб“ първи (пощенска кутия с флагче; 📥 вече значи „Днес досега“ и „Събрано до“)
+  var TABS = [['chaka', 'Чака теб'], ['tablo', 'Табло'], ['day', 'Преглед'], ['deistviq', 'Задачи'], ['nastroiki', 'Настройки']];
   var TAB_ICO = {
+    chaka: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="f" d="M7.2 9.5h10.3a3.6 3.6 0 0 1 3.6 3.6v6H3.6v-6a3.6 3.6 0 0 1 3.6-3.6z"/><path d="M7.2 9.5h10.3a3.6 3.6 0 0 1 3.6 3.6v6H3.6v-6a3.6 3.6 0 0 1 3.6-3.6zM7.2 9.5a3.6 3.6 0 0 1 3.6 3.6v6M5.8 13.6h2.8M12 19.1v2.1"/><path d="M15.2 9.5V3.4h3.6v2.4h-3.6"/></svg>',
     tablo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="f" d="M3.5 17.5a8.5 8.5 0 0 1 17 0z"/><path d="M3.5 17.5a8.5 8.5 0 0 1 17 0M5.9 12.3l1.3.8M12 9v1.5M18.1 12.3l-1.3.8M12 17.5l3.7-4.4"/><circle cx="12" cy="17.5" r="1.4" fill="currentColor"/></svg>',
     day: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="f" d="M5.5 2.8h8.7l3.3 3.3v6.6a4 4 0 0 0-5.6 6.3v2.2H5.5z"/><path d="M11.9 21.2H5.5V2.8h8.7l3.3 3.3v6.4M8.5 8h6M8.5 11.5h4"/><circle cx="16" cy="16.8" r="3.1"/><path d="M18.3 19.1l2.4 2.4"/></svg>',
     deistviq: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect class="f" x="3.2" y="3.8" width="4.8" height="4.8" rx="1"/><rect x="3.2" y="3.8" width="4.8" height="4.8" rx="1"/><path d="M4.3 6.2l1.1 1.1 1.8-2"/><rect x="3.2" y="10" width="4.8" height="4.8" rx="1"/><rect x="3.2" y="16.2" width="4.8" height="4.8" rx="1"/><path d="M11 6.2h9.8M11 12.4h9.8M11 18.6h9.8"/></svg>',
@@ -4930,13 +5025,13 @@
   function tabCur() { return view === 'setup' ? S.setupFrom : view; }
   function renderTabs() {
     var nav = $('#tabs'); if (!nav) return;
-    var on = view === 'tablo' || view === 'day' || view === 'deistviq' || view === 'nastroiki' || view === 'setup';
+    var on = view === 'chaka' || view === 'tablo' || view === 'day' || view === 'deistviq' || view === 'nastroiki' || view === 'setup';
     nav.hidden = !on;
     if (!on) return;
-    var nd = pendingDays('all').length, z = zadStats(), nz = z.wait + z.soon, cur = tabCur();
+    var nd = pendingDays('all').length, z = zadStats(), nz = z.wait + z.soon, cur = tabCur(), nc = chakaLive() ? chN() : 0;
     var h = TABS.map(function (t) {
-      var k = t[0], n = k === 'day' ? nd : k === 'deistviq' ? nz : 0;
-      var lbl = t[1] + (!n ? '' : k === 'day' ? ', ' + n + (n === 1 ? ' ден чака' : ' дни чакат') + ' одобрение'
+      var k = t[0], n = k === 'chaka' ? nc : k === 'day' ? nd : k === 'deistviq' ? nz : 0;
+      var lbl = t[1] + (!n ? '' : k === 'chaka' ? ', ' + n + ' ' + pl(n, 'нещо чака', 'неща чакат') + ' решение' : k === 'day' ? ', ' + n + (n === 1 ? ' ден чака' : ' дни чакат') + ' одобрение'
         : ', ' + (z.wait ? z.wait + ' ' + pl(z.wait, 'чака', 'чакат') + ' теб' : '') + (z.wait && z.soon ? ' и ' : '') + (z.soon ? z.soon + ' със срок до 48 часа' : ''));
       return '<button type="button" class="tab" data-a="tab" data-v="' + k + '"' + (cur === k ? ' aria-current="page"' : '') + ' aria-label="' + esc(lbl) + '">' +
         TAB_ICO[k] + '<span>' + t[1] + '</span>' + (n ? '<b class="badge" aria-hidden="true">' + n + '</b>' : '') + '</button>';
@@ -4963,6 +5058,7 @@
     document.body.classList.toggle('wide', w);
     if (view === 'day') { if (S.den || S.dni.length) renderDay(); }
     else if (view === 'deistviq') renderActsTab();
+    else if (view === 'chaka') renderChaka();
     else if (view === 'tablo' && TB.built) { renderTablo(true); if (anyDefer() && !scrolledFar()) applyDeferred(); }
     hidePill();
     twSync();
@@ -4977,6 +5073,7 @@
     if (h === '#pregled' || h === '#den') return { tab: 'day', id: null };
     if (h === '#zadachi' || h === '#deistviq') return { tab: 'deistviq', id: null };
     if (h === '#nastroiki') return { tab: 'nastroiki', id: null };
+    if (h === '#chaka') return { tab: 'chaka', id: null };
     return { tab: 'tablo', id: null };
   }
   // След вход / при старт: по адреса, иначе Таблото. Извън Таблото — броячите за значките (заявки 1, 3, 4, 5) +
@@ -4986,11 +5083,15 @@
     // запазеното Табло се чете при всеки старт (и за #pregled / #zadachi): иначе saveTablo() след заявките за значките
     // би записало празни sel/closed върху него, а Преглед не би виждал отметките от Таблото (TB.closed)
     if (!TB.hasBase) tabloFromCache();
+    // 3 [Р1]: старт без адрес и нещо чака (по кеша на телефона, преди първото рисуване) → „Чака теб“; после нищо не сменя екрана
+    chInit();
+    if (!START_HASH && h.tab === 'tablo' && chStartN() > 0) h.tab = 'chaka';
     go(h.tab, { den: h.id, force: true });
     if (h.tab !== 'tablo') loadTablo(true);
     if (h.tab !== 'deistviq') loadActs(true);
+    if (h.tab !== 'chaka') loadChaka(true);   // за значката на таба
   }
-  var VIEWS = { tablo: 1, day: 1, deistviq: 1, nastroiki: 1 };
+  var VIEWS = { chaka: 1, tablo: 1, day: 1, deistviq: 1, nastroiki: 1 };
   function go(tab, o) {
     o = o || {};
     if (!VIEWS[tab]) tab = 'tablo';
@@ -5000,6 +5101,7 @@
       if (tab === 'tablo') { if (stale60(TB.okAt)) loadTablo(); else if (anyDefer()) applyDeferred(); }
       else if (tab === 'day') { if (stale60(S.okAt)) poll(true); }
       else if (tab === 'deistviq') { if (stale60(S.actsOkAt)) loadActs(); }
+      else if (tab === 'chaka') { CH.done = {}; CH.itNow = {}; CH.ord = {}; CH.seq = 0; renderChaka(); if (stale60(CH.at)) loadChaka(true); }
       else renderNastroiki();
       return;
     }
@@ -5016,12 +5118,14 @@
       showDay(o.den || null);
     }
     else if (tab === 'deistviq') showActs();
+    else if (tab === 'chaka') showChaka();
     else showNastroiki();
   }
   function leaveView() {
     commitUndos();
     sesTick(); sesFlush();   // 1а [§6.9]: отрязъкът на мерилото — на екрана, който напускаме (преди смяната)
     var y = window.pageYOffset || 0;
+    if (view === 'chaka') { CH.y = y; chTimer(false); }
     if (view === 'tablo') { TB.scrollY = y; seenWrite(); hidePill(); }
     else if (view === 'day') { S.scrollY = y; stopPoll(); }
     else if (view === 'deistviq') { S.zadY = y; }
@@ -5100,9 +5204,9 @@
   }
   // Печатът горе: времето на данните на ТЕКУЩИЯ екран (Настройки — „данни към“ на Таблото).
   function stampNow() {
-    if (view !== 'tablo' && view !== 'day' && view !== 'deistviq' && view !== 'nastroiki') return;
+    if (view !== 'tablo' && view !== 'day' && view !== 'deistviq' && view !== 'nastroiki' && view !== 'chaka') return;
     if (view === 'tablo' && tBusy()) { stamp(TB.hasBase ? 'обновявам…' : 'зареждам…'); return; }
-    var at = view === 'day' ? S.dataAt : view === 'deistviq' ? (S.actsAt || TB.at) : TB.at;
+    var at = view === 'day' ? S.dataAt : view === 'deistviq' ? (S.actsAt || TB.at) : view === 'chaka' ? (CH.atIso || TB.at) : TB.at;
     if (offNow()) { stamp('без покритие · ' + (at ? rel(at) : '—'), true); return; }
     stamp(at ? 'данни към ' + rel(at) + (view === 'tablo' ? ' ↻' : '') : '…');
   }
@@ -5111,7 +5215,9 @@
     else if (view === 'day') renderLive();
     else if (view === 'deistviq') renderActsTab();
     else if (view === 'nastroiki') renderNastroiki();
+    else if (view === 'chaka') renderChaka();
     renderTabs(); renderBanners();
+    if (sheetKind === 'chlist') chListPaint();
     if (sheetKind === 'zad' && ZS) openZad(ZS.id, true);   // отвореният лист на задача следи състоянието ѝ
     else if (sheetKind === 'izad' && IZT.sel != null) openIzad(IZT.sel, true);
     else if (sheetKind === 'mdk') mdkRefresh();
@@ -5122,6 +5228,7 @@
     else if (view === 'day') { if (S.den && !S.offline) { poll(true); phLoad(S.den.id); } else boot(S.den ? S.den.id : null, !!S.den); }
     else if (view === 'deistviq') { loadActs(); if (zadIzg() === 'intranet') izLoad(true); }
     else if (view === 'nastroiki') { loadTablo(true); loadActs(true); NS.mqAt = 0; renderNastroiki(); }
+    else if (view === 'chaka') { CH.done = {}; CH.itNow = {}; CH.ord = {}; CH.seq = 0; loadChaka(true); izLoad(true); loadTablo(true); }
     else if (view === 'karti' && user) loadKarti();
   }
 
@@ -5234,7 +5341,9 @@
       prisMaybe();   // Присъствия — при смяна на svezhest.prisystvia.posledno (≤ 1 на 10 мин) [К21]
       if (view === 'tablo') dnesLoad();   // Етап 6 [§5.14]: „📥 Днес досега“ — една малка заявка на обект (≤ 1 на минута)
       if (view === 'tablo') renderTabloLive();
+      if (view === 'chaka') renderChaka();   // 3: свежестта („събрано до“) и дните за одобрение (скриването на одобрените)
       renderTabs(); renderBanners(); stampNow();
+      chListAuto();
     }, function (e) { if (tok === TB.tok) baseFail(e); });
     Promise.all([pB, pO]).then(function () {
       if (tok !== TB.tok) return;
@@ -5433,7 +5542,7 @@
   function buildTablo() {
     // .tb2 / .tb2-l / .tb2-r — само за широкия екран (2 колони); на телефона са display:contents → подредбата е както досега
     tablo.innerHTML = scrHead('tablo') +
-      '<div id="tb-sw"></div><div id="tb-top" class="tb-top"></div><div id="tb-fresh"></div><div id="tb-cnt" class="stats tb-cnt"></div><div id="tb-dnes" class="tb-dnes"></div><div id="tb-izvan"></div>' +
+      '<div id="tb-chaka"></div><div id="tb-sw"></div><div id="tb-top" class="tb-top"></div><div id="tb-fresh"></div><div id="tb-cnt" class="stats tb-cnt"></div><div id="tb-dnes" class="tb-dnes"></div><div id="tb-izvan"></div>' +
       '<div class="tb2"><div class="tb2-l">' +
       '<section class="grp g-reshenie" id="tb-open-s" aria-label="Изисква решение"><div class="grp-h"><h2>Изисква решение</h2><span class="grp-n" id="tb-open-n">…</span><span class="grp-rc" id="tb-red-resh"></span></div>' +
         '<p class="grp-s">чака теб: отговор, решение, пари или срок</p><div id="tb-open" class="tb-list"></div></section>' +
@@ -5457,7 +5566,7 @@
     if (!TB.built) buildTablo();
     if (!keep) { TB.defer = {}; hidePill(); }
     var d = TB.defer;
-    renderTbSw(); renderTbTop(); renderFresh('#tb-fresh', true); renderTabloCounts(); renderDnes(); renderIzvan(); renderTbRed();
+    renderTbChaka(); renderTbSw(); renderTbTop(); renderFresh('#tb-fresh', true); renderTabloCounts(); renderDnes(); renderIzvan(); renderTbRed();
     if (!d.open) renderOpen(true);
     if (!d.chart) renderChart(true);
     if (!d.feed) renderFeed(); else renderFeedEnd();
@@ -5465,7 +5574,7 @@
   // Смяна от опашката/мрежата: числата винаги; списъкът с решенията — само ако не си скролнал надолу [К11].
   function renderTabloLive() {
     if (view !== 'tablo' || !TB.built) return;
-    renderTbSw(); renderTbTop(); renderFresh('#tb-fresh', true); renderTabloCounts(); renderDnes(); renderIzvan(); renderOpen(false); renderFeedEnd();
+    renderTbChaka(); renderTbSw(); renderTbTop(); renderFresh('#tb-fresh', true); renderTabloCounts(); renderDnes(); renderIzvan(); renderOpen(false); renderFeedEnd();
   }
   function renderTbSw() {
     var el = box('#tb-sw'); if (!el) return;
@@ -5517,7 +5626,7 @@
   }
   function renderTbRed() {
     var a = box('#tb-red-resh'), b = box('#tb-red-potok'), s = box('#tb-feed-sub'), ot = box('#tb-ot'), st = red('potok') === 'stari';
-    if (a) a.innerHTML = redChip('resh');
+    if (a) a.innerHTML = chakaLive() ? '' : redChip('resh');   // 3: в „Чака теб“ блокът е един ред — без подредба
     if (b) b.innerHTML = redChip('potok');
     if (s) s.innerHTML = st ? 'най-старото горе · превърти за по-новите дни' : 'най-новото горе · превърти за по-старите дни';
     if (!ot) return;
@@ -5558,7 +5667,7 @@
   }
   function renderOpenN() {
     var n = $('#tb-open-n'); if (!n) return;
-    var o = selState(TB.sel).open, v = o && !o.err ? String(openTotal(TB.sel, o, hideInfo())) : '—';
+    var o = selState(TB.sel).open, v = chakaLive() ? String(chTbResh()) : o && !o.err ? String(openTotal(TB.sel, o, hideInfo())) : '—';
     if (n.textContent !== v) n.textContent = v;
   }
   function dcCard(t, hi, ph) {
@@ -5634,6 +5743,8 @@
       done: function (r) { if (r === 'sent') tSetVd(tid, vk); if (view === 'tablo') renderOpen(true); } });
   }
   function openHtml() {
+    // 3 [§6.2, Р1]: щом лаптопът събира „Чака теб“ — блокът е един ред (едно решение = една карта, в „Чака теб“)
+    if (chakaLive()) { var nr = chTbResh(); return '<button type="button" class="ch-lnk" data-a="tab" data-v="chaka">Изисква решение: ' + nr + ' — в „Чака теб“ <span aria-hidden="true">›</span></button>'; }
     var sel = TB.sel, st = selState(sel), o = st.open, hi = hideInfo(), h = '';
     if (!o) return offNow() ? '<p class="grp-e">📴 Решенията ще се покажат, когато има покритие.</p>' : '<p class="grp-e"><span class="pulse" aria-hidden="true"></span> Зареждам решенията…</p>';
     if (o.err) return '<div class="err">Решенията не се заредиха: ' + esc(errBg(o.err)) + '</div><button type="button" class="btn ghost" data-a="tRetry" data-s="open">Опитай пак</button>';
@@ -6241,7 +6352,7 @@
         return (l || []).some(function (t) { if (t.id === tid) { found = t; return true; } return false; });
       });
     });
-    return found;
+    return found || CH.tmap[tid] || null;   // 3: точката от картата „решение от дневника“ в „Чака теб“ (бутоните на Табло)
   }
   function tDay(t) {
     if (t.dni) return t.dni;
@@ -6553,6 +6664,8 @@
   }
   function izList() {
     var f = IZT.f, o = IZT.o, rows = (IZT.rows || []).filter(function (r) { return izObOk(r, o); });
+    // 3 [§4.11]: „Задачите му ›“ от „Хора и фирми“ — само задачите на този човек (по скелета на името)
+    if (IZT.chovek) rows = rows.filter(function (r) { return skelMatch(r.otgovornik || '', IZT.chovek) || (r.ekip || []).some(function (x) { return skelMatch(x, IZT.chovek); }); });
     if (f === 'done') return rows.filter(function (r) { return !izOpen(r); }).sort(izDoneCmp).slice(0, 30);
     rows = rows.filter(function (r) { return izOpen(r) && (f === 'na_men' ? r.na_men : f === 'ot_men' ? r.ot_men : f === 'v_ekipa' ? r.v_ekipa : izOver(r)); });
     // срокът възходящо (просрочените първи), без срок — накрая; при равен срок — по-новата първа
@@ -6609,7 +6722,8 @@
       return '<button type="button" class="chip' + (x[0] === 'prosr' && n ? ' amb' : '') + '" data-a="izF" data-v="' + x[0] + '" aria-pressed="' + (IZT.f === x[0]) + '">' + x[1] + (n != null ? ' <span class="cn">' + n + '</span>' : '') + '</button>';
     }).join('') + '</div><div class="zad-f iz-o" role="group" aria-label="Обект">' + IZ_O.map(function (x) {
       return '<button type="button" class="chip sm' + (x[0] === 'ag' || x[0] === 'soft' ? ' o-' + x[0] : '') + '" data-a="izO" data-v="' + x[0] + '" aria-pressed="' + (IZT.o === x[0]) + '">' + x[1] + '</button>';
-    }).join('') + '</div>';
+    }).join('') + '</div>' +
+      (IZT.chovek ? '<div class="chips"><span class="chip-x">Само: ' + esc(IZT.chovek) + '<button type="button" data-a="izChX" aria-label="Махни филтъра по човек">×</button></span></div>' : '');
     h += l.length ? '<ul class="acts">' + l.map(izRow).join('') + '</ul>'
       : '<p class="grp-e">' + (IZT.f === 'done' ? 'Няма завършени задачи.' : IZT.f === 'prosr' ? '✅ Нищо не е просрочено.' : 'Няма отворени задачи тук.') + '</p>';
     return h;
@@ -6882,6 +6996,1349 @@
     plusPick(v);
   }
 
+  // ======================================================================================================================
+  // ---------- Стъпка 3 (STAPKA3-SPEC.md, ЧАСТ А): „Чака теб“ — ЕДНАТА кутия за решения, сутрешният лист, „Какво излезе“,
+  // „Спри всичко изходящо“, „Хора и фирми“, „Документи“ ----------
+  // Картите (chaka_karti) ги пише САМО лаптопът (ailab-chaka.ps1, без ИИ); телефонът ги чете и само СКРИВА веднага онова, което
+  // вече е решено — в опашката, в отговорите (chaka_otgovori) или в свежите данни (одобрен ден, отговорена точка, напомнен човек) [3 Р3].
+  // Телефонът дописва само chaka_otgovori (+ старите resheniq/deistviq). Нищо не излиза навън: ✓ на „Пусни навън“ е записано решение [Р4].
+  // Без 011 (42P01) → „още не е в облака“; Табло — точно както досега [§6]. Текстът на картите е ДАННИ (идва от агентите) — само esc().
+  // ======================================================================================================================
+  var K3 = { chaka: 'ailab-s3-chaka', list: 'ailab-list-' };
+  var CH = { inited: false, karti: null, redove: null, otg: [], izSt: null, st: '', err: null, at: 0, atIso: '', busy: false, tok: 0, cache: false, live: false,
+    timer: 0, y: 0, ord: {}, seq: 0, done: {}, itNow: {}, open: {}, ed: {}, fold: {}, more: {}, flash: null, tmap: {}, merOff: false, redo: false,
+    autoOk: !START_HASH, listWait: false, listY: 0, backList: false, lsAll: {}, lsHow: false, why: null, whyV: '',
+    log: null, logSt: '', logErr: null, logAt: 0, logOpen: {}, hora: null, horaSt: '', horaErr: null, horaAt: 0, horaQ: '',
+    vajni: null, vajniSt: '', vajniAt: 0, m2330: null, m2330At: 0, dokF: 'all', dokQ: '', izSh: null };
+  var CH_GOT = { da: 1, popalni: 1, ne: 1, izbor: 1, pratih: 1, otgovoreno: 1 };            // отговорено (в „Готово днес“) [§4.3]
+  var CH_SIG = { da: 1, popalni: 1, ne: 1, izbor: 1, pratih: 1, otgovoreno: 1, otlozhi: 1, varni: 1 };   // сменят състоянието (zashto, karta — не)
+  var OBN = { ag: 'Амур', soft: 'Скай', obshto: 'Общо' };
+  var AGN = { brifing: 'Брифинг', analiz: 'Анализ', intranet: 'Интранет', intranet_db: 'Интранет', operativki: 'Оперативки', sarvar: 'Сървър', prisystvia: 'Присъствия',
+    kameri: 'Камери', temi: 'Теми', dnevnik: 'Дневник', poshta: 'Поща' };
+  var CH_SV = 'Кое е вярното?';
+  function chJ(x, arr) { if (typeof x === 'string') { try { x = JSON.parse(x); } catch (e) { x = null; } } return arr ? (Array.isArray(x) ? x : []) : (x && typeof x === 'object' && !Array.isArray(x) ? x : null); }
+  function chNorm(c) { c.poleta = chJ(c.poleta) || {}; c.grupa = chJ(c.grupa, true); c.izvori = chJ(c.izvori, true); c.izbori = chJ(c.izbori, true); return c; }
+  // дата от полетата на лаптопа — само истинска ГГГГ-ММ-ДД; без нея — празно (картата пак се рисува, нищо не гърми) [§6.12]
+  function chOkD(s) { return /^\d{4}-\d{2}-\d{2}/.test(String(s || '')) && !isNaN(parseD(String(s)).getTime()); }
+  function chDay(s) { return chOkD(s) ? lcDay(String(s).slice(0, 10)) : ''; }
+  function chDm(s) { return chOkD(s) ? ddmm(parseD(String(s))) : ''; }
+  function chReset() {
+    CH.inited = false; CH.karti = null; CH.redove = null; CH.otg = []; CH.izSt = null; CH.st = ''; CH.err = null; CH.at = 0; CH.atIso = ''; CH.cache = false; CH.live = false;
+    CH.ord = {}; CH.seq = 0; CH.done = {}; CH.open = {}; CH.ed = {}; CH.fold = {}; CH.more = {}; CH.tmap = {}; CH.log = null; CH.logSt = ''; CH.logAt = 0; CH.hora = null; CH.horaSt = ''; CH.horaAt = 0;
+    CH.vajni = null; CH.vajniSt = ''; CH.vajniAt = 0; CH.m2330 = null; CH.m2330At = 0; IZT.chovek = null;
+    if (CH.timer) { clearInterval(CH.timer); CH.timer = 0; }
+  }
+  // --- кешът на телефона (ailab-s3-chaka): за отваряне без покритие и за решението кой таб да се отвори [§6.1, Р1] ---
+  function chInit() {
+    if (CH.inited) return;
+    CH.inited = true;
+    var c = sget(K3.chaka, null);
+    if (DEMO && !c && D && D.chaka_karti && !D.s3No) c = demoChakaSnap();   // демо: „кешът от вчера“ — от примерните данни
+    if (c && c.v === 1 && Array.isArray(c.karti)) {
+      CH.karti = c.karti.map(chNorm); CH.redove = (c.redove || []).map(chNorm); CH.otg = Array.isArray(c.otg) ? c.otg : []; CH.izSt = c.izSt || null;
+      CH.st = 'ok'; CH.atIso = c.at || ''; CH.cache = true; CH.live = !!c.live;
+    } else if (c && c.v === 1 && c.st === 'missing') CH.st = 'missing';
+  }
+  function chSlim(k) { var x = Object.assign({}, k); x.tekst = k.tekst ? clip(k.tekst, 1500) : null; return x; }
+  function chSave() {
+    var c = { v: 1, at: CH.atIso, st: CH.st, live: chakaLive() };
+    if (CH.st === 'ok' && CH.karti) {
+      var lim = nowMs() - 864e5;
+      c.karti = CH.karti.filter(function (k) { return k.status === 'aktivna' || k.status === 'svita' || Date.parse(k.obnovena) > lim; }).map(chSlim);
+      c.redove = (CH.redove || []).map(chSlim); c.otg = CH.otg.slice(-600); c.izSt = CH.izSt;
+    }
+    if (!ssetOk(K3.chaka, c) && c.redove) { c.redove = []; ssetOk(K3.chaka, c); }
+  }
+  // „Чака теб“ е на живо: таблиците ги има и лаптопът е събирал (svezhest chaka); преди първата свежест — по кеша
+  function chakaLive() { return CH.st === 'ok' && !!CH.karti && (svOf('chaka') ? true : !(S.svezhest || []).length && CH.live); }
+  function chStartN() { return CH.st === 'ok' && CH.karti && (CH.live || chakaLive()) ? chN() : 0; }
+  // --- зареждане: при отваряне на таба, при старт (значката), на 2 мин при отворен таб, при връщане на приложението [§6.1] ---
+  function loadChaka(force) {
+    chInit();
+    if (CH.busy || !api || (!DEMO && (!db || !user))) return;
+    if (offNow()) { if (!CH.karti && CH.st !== 'missing') CH.st = 'net'; chPaint(); return; }
+    if (!force && CH.at && Date.now() - CH.at < 30000) return;
+    CH.busy = true;
+    var tok = ++CH.tok;
+    Promise.all([api.chaka(), api.chakaOtg(), api.izhodSt().then(null, function (e) { if (isMissing(e)) throw e; return CH.izSt; })]).then(function (rr) {
+      CH.busy = false; if (tok !== CH.tok) return;
+      var nov = (rr[1] || []).map(function (r) { r.danni = chJ(r.danni); return r; }), kid = {};
+      nov.forEach(function (r) { if (r.klient_id) kid[r.klient_id] = 1; });
+      // току-що пратените (afterSent, ид „l…“), които заявката още не е видяла — остават
+      var mest = (CH.otg || []).filter(function (r) { return String(r.id).charAt(0) === 'l' && r.klient_id && !kid[r.klient_id]; });
+      CH.karti = (rr[0].karti || []).map(chNorm); CH.redove = (rr[0].redove || []).map(chNorm); CH.otg = nov.concat(mest);
+      CH.izSt = rr[2] || null; CH.st = 'ok'; CH.err = null; CH.at = Date.now(); CH.atIso = nowIso(); CH.cache = false; CH.live = chakaLive();
+      chSave(); chPaint(); chListAuto();
+    }, function (e) {
+      CH.busy = false; if (tok !== CH.tok) return;
+      if (isMissing(e)) { CH.st = 'missing'; CH.karti = null; CH.redove = null; CH.otg = []; CH.izSt = null; CH.at = Date.now(); CH.cache = false; chSave(); }
+      else if (isNet(e) || isAuth(e)) { if (!CH.karti) CH.st = 'net'; CH.at = 0; }
+      else { CH.err = e; if (!CH.karti) CH.st = 'err'; CH.at = Date.now(); }
+      chPaint();
+    });
+  }
+  function chPaint() {
+    if (view === 'chaka') { renderChaka(); stampNow(); }
+    if (view === 'tablo' && TB.built) { renderTbChaka(); renderTbRed(); renderOpen(false); renderOpenN(); }
+    if (view === 'nastroiki') renderNastroiki();
+    if (sheetKind === 'chlist') chListPaint();
+    if (sheetKind === 'chlog') { var lb = sheetEl.querySelector('#chLogB'); if (lb) putH(lb, chLogHtml()); }
+    renderTabs();
+  }
+  function chTimer(on) {
+    if (CH.timer) { clearInterval(CH.timer); CH.timer = 0; }
+    if (on) CH.timer = setInterval(function () { if (view === 'chaka' && !document.hidden && !offNow()) loadChaka(true); }, 120000);
+  }
+  function showChaka() {
+    setBodyO(TB.sel); setHash('#chaka');
+    chInit(); CH.done = {}; CH.itNow = {}; CH.ord = {}; CH.seq = 0;
+    renderChaka(); window.scrollTo(0, 0);
+    if (stale60(CH.at)) loadChaka(true);
+    izLoad(); chVajniLoad();
+    chTimer(true);
+  }
+
+  // --- отговорите: базата + опашката (и задържаните в 5-те с „Отмени“; без отказаните) — по kluch и по podkluch [§4.3] ---
+  function chT(r) { var t = Date.parse(r && r.kogda); return isNaN(t) ? 0 : t; }
+  function chIdx() {
+    var k = {}, p = {}, seen = {};
+    function put(r) { (k[r.kluch] = k[r.kluch] || []).push(r); if (r.podkluch) (p[r.podkluch] = p[r.podkluch] || []).push(r); }
+    (CH.otg || []).forEach(function (r, i) { if (r.klient_id) seen[r.klient_id] = 1; r._o = typeof r.id === 'number' ? r.id : 1e14 + i; put(r); });
+    queue().forEach(function (it, i) {
+      if (it.tbl !== 'chaka_otgovori' || it.err || !it.row || (it.row.klient_id && seen[it.row.klient_id])) return;
+      put(Object.assign({ id: 'q' + it.qid, kogda: it.at, obraboteno: null, rezultat: null, _q: true, _o: 1e15 + i }, it.row));
+    });
+    function srt(l) { l.sort(function (a, b) { return chT(a) - chT(b) || a._o - b._o; }); }
+    Object.keys(k).forEach(function (x) { srt(k[x]); });
+    Object.keys(p).forEach(function (x) { srt(p[x]); });
+    return { k: k, p: p };
+  }
+  function chLast(list, pk) { var x = null; (list || []).forEach(function (r) { if (CH_SIG[r.vid] && (r.podkluch || null) === (pk || null)) x = r; }); return x; }
+  // слята карта (тема / документ / „Още N“ / П1-списък / напомняния / дневникът по обект) — отговорите са по нещо (podkluch)
+  function chMerged(c) { var k = String(c.kluch || ''); return c.vid === 'napomni' || k === 'iz:spisak' || /^(t|d|g):/.test(k) || (c.shablon === 'dnevnik' && !/^dn:\d+$/.test(k)); }
+  function chItems(c) { return chMerged(c) ? (c.grupa || []).filter(function (g) { return g && g.podkluch; }) : []; }
+  // точката от дневника вече има отговор: в опашката, в Табло (TB.closed), в отворения ден или задача към нея [§4.7а, Р8]
+  function chDnZatv(tid) {
+    if (tid == null || isNaN(tid)) return false;
+    var hi = hideInfo();
+    if (hi.q[tid] || TB.inflight[tid] || (TB.closed[tid] && !hi.err[tid])) return true;
+    if (S.res.some(function (r) { return r.tochka_id === tid && CLOSE_VID[r.vid]; })) return true;
+    return zadRows().some(function (a) { return a.tochka_id === tid && (a._q || a._held || CLOSES_DEI.indexOf(a.status) >= 0); });
+  }
+  // напомнен човек: „✓ Пратих го“ по него или „✉ Напомни“ (задачата) в последните 7 дни [§4.8] → кога (мс; 0 = не е)
+  function chNapDone(g, X) {
+    var lim = nowMs() - 7 * 864e5, pk = g.podkluch || ('napomni:' + skel(g.ime || '')), t0 = 0;
+    (X.p[pk] || []).forEach(function (r) { if ((r.vid === 'pratih' || r.vid === 'da') && chT(r) >= lim) t0 = Math.max(t0, chT(r)); });
+    if (t0) return t0;
+    zadRows().forEach(function (a) {
+      if (!isNapMail(a)) return;
+      var d = danniOf(a), t = Date.parse(d.napomneno || a.sazdadeno);
+      if ((!isNaN(t) && t >= lim || a._held || a._q) && (d.chaka_pk === pk || (g.ime && skelMatch(a.chovek || '', g.ime)))) t0 = Math.max(t0, isNaN(t) ? nowMs() : t);
+    });
+    return t0;
+  }
+  function chItemDone(c, g, X, list) {
+    if (c.shablon === 'dnevnik') return chDnZatv(+g.tochka_id) ? { vid: 'da' } : null;
+    var L = chLast(list, g.podkluch);
+    if (L && CH_GOT[L.vid]) return L;
+    var tn = c.vid === 'napomni' ? chNapDone(g, X || chIdx()) : 0;
+    if (tn) return { vid: 'pratih', kogda: new Date(tn).toISOString() };
+    return null;
+  }
+  // „↳“: отговорът по prd:<ид на точката> („да“ / „не“); „не“ — и махнатата връзка (vrazka_ne)
+  function chPrdAns(t) {
+    if (!t || t.id == null) return null;
+    var l = chIdx().k['prd:' + t.id] || [], L = chLast(l, null);
+    return L && L.vid === 'izbor' ? (String(L.tekst || '') === 'da' ? 'da' : 'ne') : null;
+  }
+  function chPrdNe(c) {
+    var tid = +(c.poleta || {}).tochka_id;
+    return !isNaN(tid) && (S.res.some(function (r) { return r.vid === 'vrazka_ne' && r.tochka_id === tid; }) ||
+      queue().some(function (it) { return it.tbl === 'resheniq' && !it.err && it.row && it.row.vid === 'vrazka_ne' && it.row.tochka_id === tid; }));
+  }
+  // дните на „Одобри“, които още чакат (одобреният / „се одобрява“ ден се скрива веднага) [§4.7]
+  function chOdDni(c) {
+    var raw = c.poleta && c.poleta.dni, dni = (Array.isArray(raw) ? raw : []).filter(function (x) { return x && typeof x === 'object' && x.den_id != null; }), pend = {};
+    if (!TB.hasBase && !S.dni.length) return dni;
+    pendingDays('all').forEach(function (d) { pend[d.id] = 1; });
+    return dni.filter(function (x) { var id = +x.den_id; return pend[id] || !(dniById(id) || findDni(id)); });
+  }
+  // срокът на изходяща карта: по-късното от izticha, отлагането + 24 ч и „↺ Върни“ + 24 ч [§4.3]
+  function chIzt(c, list) {
+    var t = Date.parse(c.izticha) || 0;
+    (list || []).forEach(function (r) {
+      if (r.vid === 'otlozhi' && r.danni && r.danni.do) t = Math.max(t, (Date.parse(r.danni.do) || 0) + 864e5);
+      if (r.vid === 'varni') t = Math.max(t, chT(r) + 864e5);
+    });
+    return t;
+  }
+  // точката на „решение от дневника“ като точка на Табло — за същите бутони (tOk / tFix / tAct) [§4.1]
+  function chDnT(c, g) {
+    var pl0 = g || c.poleta || {}, tid = +pl0.tochka_id; if (isNaN(tid)) return null;
+    var den = +pl0.den_id, d = dniById(den) || findDni(den) || (S.den && S.den.id === den ? S.den : null) || {};
+    var t = { id: tid, den_id: den, k: pl0.k != null ? +pl0.k : null, tekst: (g ? g.tekst : (c.tekst || c.zaglavie)) || '', izvori: (g ? chJ(g.izvori, true) : c.izvori) || [], vajnost: c.vajnost || 2, grupa: 'reshenie',
+      dni: { obekt: d.obekt || (c.obekt !== 'obshto' ? c.obekt : null) || pl0.obekt || null, data: d.data || pl0.data || c.data, versiq: d.versiq != null ? d.versiq : (pl0.versiq != null ? pl0.versiq : null), hesh: d.hesh || null, status: d.status || 'chernova', obnoven: d.obnoven || null } };
+    CH.tmap[tid] = t;
+    return t;
+  }
+  // --- състоянието на всички карти [§4.3–§4.5]: akt (по ред, таван 12) · txt (готовите текстове за Интранета, извън N) · otl · svi · izp · got ---
+  function chakaState() {
+    var X = chIdx(), now0 = nowMs(), out = { akt: [], txt: [], otl: [], svi: [], izp: [], got: [], skr: [], all: {}, N: 0, vis: [], cakat: 0, X: X };
+    var karti = (CH.karti || []).slice();
+    // ред от листа, натиснат „→ Карта“ (karta) — показва се веднага като карта, докато лаптопът направи истинската
+    (CH.redove || []).forEach(function (r) {
+      if (!(X.k[r.kluch] || []).some(function (a) { return a.vid === 'karta'; })) return;
+      if (karti.some(function (c) { return c.kluch === r.kluch || (c.poleta && c.poleta.ot_reda === r.kluch); })) return;
+      karti.push({ id: null, kluch: r.kluch, vid: 'popalni', shablon: 'reshenie', obekt: r.obekt || 'obshto', zaglavie: r.zaglavie, tekst: r.tekst, izvori: r.izvori || [], iztochnik: r.iztochnik,
+        agent: r.agent, izvor_fajl: r.izvor_fajl, data: r.data, vajnost: r.vajnost || 2, prioritet: 80, status: 'aktivna', sazdadena: r.sazdadena, obnovena: r.obnovena, poleta: {}, grupa: [], izbori: [], _red: true });
+    });
+    karti.forEach(function (c) {
+      if (!c || c.vid === 'red' || c.status === 'izchezna') return;
+      try { chSt1(c); } catch (e) { chBadLog(e); var xb = { c: c, list: X.k[c.kluch] || [], L: null, st: 'akt', at: null, rest: null, ev: '', bad: true }; out.all[c.kluch] = xb; out.akt.push(xb); }
+    });
+    // състоянието на една карта (изкривена карта не спира другите — горе)
+    function chSt1(c) {
+      var list = X.k[c.kluch] || [], L = chLast(list, null), x = { c: c, list: list, L: L, st: 'akt', at: null, rest: null, ev: '' };
+      if (c.vid === 'popalni' && c.shablon === 'dnevnik') { if (/^dn:\d+$/.test(c.kluch)) chDnT(c); else (c.grupa || []).forEach(function (g) { chDnT(c, g); }); }
+      if (L && CH_GOT[L.vid]) { x.st = 'got'; x.at = L.kogda; }
+      else if (L && L.vid === 'otlozhi' && L.danni && (Date.parse(L.danni.do) || 0) > now0) { x.st = 'otl'; x.do = L.danni.do; }
+      else if (c.status === 'zatvorena' && !(L && L.vid === 'varni')) { x.st = 'got'; x.at = c.obnovena; }
+      if (x.st === 'akt') {
+        var its = chItems(c);
+        if (its.length) {
+          var tMax = 0;
+          x.rest = its.filter(function (g) { var dn = chItemDone(c, g, X, list); if (dn) tMax = Math.max(tMax, chT(dn)); return !dn; });
+          if (!x.rest.length) {
+            x.ev = c.shablon === 'dnevnik' ? 'dn' : c.vid === 'napomni' ? 'nap' : 'vse';
+            // решенията от дневника се скриват по resheniq [§4.3]; другите слети карти, отговорени цели от РП, са отговорени →
+            // „Готово днес“ (с „Копирай“ по задача при П1), а не изчезват без следа [§4.3, §6.3]
+            if (x.ev === 'dn') x.st = 'skr';
+            else { x.st = 'got'; x.vse = true; x.at = tMax ? new Date(tMax).toISOString() : null; }
+          }
+        }
+      }
+      if (x.st === 'akt') {
+        if (c.vid === 'odobri') { x.dni = chOdDni(c); if (!x.dni.length) { x.st = 'skr'; x.ev = 'odobri'; } }
+        else if (c.shablon === 'dnevnik' && /^dn:\d+$/.test(c.kluch) && chDnZatv(+(c.poleta || {}).tochka_id)) { x.st = 'skr'; x.ev = 'dn'; }
+        else if (/^prd:/.test(c.kluch) && chPrdNe(c)) { x.st = 'skr'; x.ev = 'prd'; }
+      }
+      if (c.vid === 'pusni') x.iztT = chIzt(c, list);
+      if (x.st === 'akt' && ((c.status === 'izpusnata' && !(L && L.vid === 'varni')) || (c.vid === 'pusni' && x.iztT && x.iztT < now0))) x.st = 'izp';
+      if (x.st === 'akt' && c.status === 'svita' && !(L && L.vid === 'varni')) x.st = 'svi';
+      out.all[c.kluch] = x;
+      if (x.st === 'akt') { if (c.vid === 'pusni' && c.kanal !== 'mail') out.txt.push(x); else out.akt.push(x); }
+      else if (x.st === 'otl') out.otl.push(x);
+      else if (x.st === 'svi') out.svi.push(x);
+      else if (x.st === 'izp') out.izp.push(x);
+      else if (x.st === 'got') { var ta = Date.parse(x.at); if (!isNaN(ta) && sameDay(new Date(ta), now())) out.got.push(x); }
+      else out.skr.push(x);
+    }
+    function cmp(a, b) { return (+b.c.prioritet || 0) - (+a.c.prioritet || 0) || String(a.c.data || '').localeCompare(String(b.c.data || '')) || (a.c.id || 9e15) - (b.c.id || 9e15); }
+    out.akt.sort(cmp); out.txt.sort(cmp);
+    out.got.sort(function (a, b) { return (Date.parse(b.at) || 0) - (Date.parse(a.at) || 0); });
+    out.N = out.akt.length;
+    out.vis = out.akt.slice(0, 12); out.cakat = Math.max(0, out.akt.length - 12);
+    return out;
+  }
+  function chN() { if (CH.st !== 'ok' || !CH.karti) return 0; return chakaState().N; }
+  // „Изисква решение: N“ в Табло = решенията от дневника + решенията от агентите (активните) [§6.2]
+  function chTbResh() { var s = chakaState(); return s.akt.filter(function (x) { return x.c.vid === 'popalni' && (x.c.shablon === 'dnevnik' || x.c.shablon === 'reshenie'); }).length; }
+  // „Спри всичко изходящо“: последният в опашката печели, иначе изгледът izhod_sastoqnie (при съмнение — спряно) [Р7]
+  function chSpran() {
+    var q = null;
+    queue().forEach(function (it) { if (it.tbl === 'chaka_otgovori' && !it.err && it.row && (it.row.vid === 'spri_izhod' || it.row.vid === 'pusni_izhod')) q = it; });
+    if (q) return { spran: q.row.vid === 'spri_izhod', ot: q.at };
+    var s = CH.izSt;
+    return s ? { spran: !!s.spran, ot: s.ot || null } : { spran: false, ot: null };
+  }
+
+  // ---------- рисуване на таба [§6.2, §6.3] ----------
+  function chSec(c) { return c.vid === 'popalni' && c.shablon === 'otgovor' ? 'p1' : c.vid === 'odobri' || c.vid === 'odobri_iz' ? 'od' : 'ost'; }
+  function chOrd(k) { if (CH.ord[k] == null) CH.ord[k] = ++CH.seq; return CH.ord[k]; }
+  function chTyping() { var a = document.activeElement, w = $('#chk'); return !!(w && a && w.contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)); }
+  function renderChaka() {
+    if (view !== 'chaka') return;
+    if (!$('#chk')) { screen.innerHTML = scrHead('chaka') + '<div id="chk" class="chk"></div>'; }
+    $('#fab').hidden = false;
+    if (chTyping()) { CH.redo = true; return; }   // пише се в поле на картата — пречертаването чака (клавиатурата не пада)
+    CH.redo = false;
+    var el = box('#chk'); if (!el) return;
+    // последна защита: табът никога не остава със старото съдържание заради изкривени данни [§6.12]
+    var hh; try { hh = chakaHtml(); } catch (e) { chBadLog(e); hh = '<div class="err">„Чака теб“ не се показа — данните от лаптопа са непълни. Опитай пак след малко.</div><button type="button" class="btn ghost" data-a="refresh">Опитай пак</button>'; }
+    el.innerHTML = hh;
+    if (CH.flash) {
+      var fk = CH.flash; CH.flash = null;
+      var fe = Array.prototype.filter.call(el.node.querySelectorAll('.ch[data-k]'), function (n) { return n.getAttribute('data-k') === fk; })[0];
+      if (fe) setTimeout(function () {
+        var tw = $('.topwrap'), off = (tw ? tw.getBoundingClientRect().height : 0) + 10;
+        window.scrollTo(0, Math.max(0, fe.getBoundingClientRect().top + (window.pageYOffset || 0) - off));
+        fe.classList.remove('flash'); void fe.offsetWidth; fe.classList.add('flash');
+        setTimeout(function () { fe.classList.remove('flash'); }, 1600);
+      }, 60);
+    }
+  }
+  function chakaHtml() {
+    chInit();
+    if (CH.st === 'missing') return '<section class="empty"><div class="empty-e" aria-hidden="true">📬</div><h1>„Чака теб“ още не е в облака</h1><p>Ще се появи, щом лаптопът го включи. Дотогава решенията са в Табло — както досега.</p>' +
+      '<button type="button" class="btn ghost" data-a="tab" data-v="tablo">Към Табло ›</button></section>';
+    if (!CH.karti) {
+      if (CH.st === 'net' || offNow()) return '<p class="grp-e">📴 „Чака теб“ — когато има покритие.</p>';
+      if (CH.st === 'err') return '<div class="err">Не се зареди: ' + esc(errBg(CH.err)) + '</div><button type="button" class="btn ghost" data-a="refresh">Опитай пак</button>';
+      return '<p class="grp-e"><span class="pulse" aria-hidden="true"></span> Зареждам „Чака теб“…</p>';
+    }
+    if (!chakaLive()) return '<section class="empty"><div class="empty-e" aria-hidden="true">📬</div><h1>Лаптопът още не е събирал „Чака теб“</h1><p>Картите идват от лаптопа (на 10 мин, когато е включен) и от агентите. Дотогава решенията са в Табло.</p>' +
+      '<button type="button" class="btn ghost" data-a="tab" data-v="tablo">Към Табло ›</button></section>';
+    var s = chakaState(), sp = chSpran(), h = '';
+    // ред на появяване: първото виждане по реда на важност; новото влиза най-долу, нищо не скача под пръста [§4.5]
+    s.akt.forEach(function (x) { chOrd(x.c.kluch); });
+    h += chTopHtml(s, sp);
+    if (CH.cache || offNow()) h += '<p class="iz-off small muted">📴 от ' + esc(rel(CH.atIso)) + '</p>';
+    // отговорените в този изглед остават на мястото си, свити (в „Готово днес“ — при следващото отваряне на таба) [§6.3]
+    function isTxt(c) { return c.vid === 'pusni' && c.kanal !== 'mail'; }
+    s.txt.forEach(function (x) { chOrd(x.c.kluch); });
+    var vis = s.vis.slice(), txt = s.txt.slice();
+    Object.keys(CH.done).forEach(function (k) { var x = s.all[k]; if (!x || x.st === 'akt' || CH.ord[k] == null) return; if (isTxt(x.c)) { if (txt.indexOf(x) < 0) txt.push(x); } else if (vis.indexOf(x) < 0) vis.push(x); });
+    function byOrd(a, b) { return CH.ord[a.c.kluch] - CH.ord[b.c.kluch]; }
+    vis.sort(byOrd); txt.sort(byOrd);
+    var by = { p1: [], od: [], ost: [] };
+    vis.forEach(function (x) { by[chSec(x.c)].push(x); });
+    // П1 — Интранетът ПЪРВИ [§6.2]
+    var izc = IZT.rows ? izCounts() : null, iz2 = chIzDni();
+    h += '<section class="ch-sec" aria-label="Интранет — моите задачи"><h2 class="ch-h">🗂️ Интранет — моите задачи</h2>' +
+      (izc ? '<p class="ch-hs">на теб ' + izc.na_men + ' ' + pl(izc.na_men, 'отворена', 'отворени') + ' · просрочени ' + iz2.prosr + ' · днес ' + iz2.dnes + ' · утре ' + iz2.utre + '</p>' : '') +
+      (by.p1.length ? by.p1.map(function (x) { return chCardHtml(x, sp); }).join('') : '<p class="grp-e">✓ Нищо от Интранета не чака отговор днес.</p>') + '</section>';
+    if (by.od.length) h += '<section class="ch-sec" aria-label="За одобрение"><h2 class="ch-h">За одобрение</h2>' + by.od.map(function (x) { return chCardHtml(x, sp); }).join('') + '</section>';
+    if (by.ost.length) h += '<section class="ch-sec" aria-label="Останалото"><h2 class="ch-h">Останалото</h2>' + by.ost.map(function (x) { return chCardHtml(x, sp); }).join('') + '</section>';
+    if (s.cakat) h += '<p class="ch-cak">Още ' + s.cakat + ' ' + pl(s.cakat, 'чака', 'чакат') + ' място — показват се, щом отговориш на някоя.</p>';
+    if (!s.N && !vis.length) h += '<section class="ch-nula"><p><b>✓ Чака теб: 0 — нищо не чака решение.</b></p><p class="small muted">Новото идва от лаптопа (на 10 мин, когато е включен) и от агентите.</p></section>';
+    // свитите най-долу [§6.2]
+    h += chFoldHtml('txt', '✍ Готови текстове за Интранета (' + s.txt.length + ') — нищо не излиза само', txt, function (x) { return chCardHtml(x, sp); });
+    var otlDo = s.otl.map(function (x) { return x.do; }).sort()[0];
+    h += chFoldHtml('otl', 'Отложени (' + s.otl.length + ') — ' + (otlDo ? 'връщат се ' + chDoLbl(otlDo) : 'връщат се сами'), s.otl, function (x) { return chMiniHtml(x, 'отложена до ' + chDoLbl(x.do), ''); });
+    h += chFoldHtml('svi', 'Агентите вече не ги споменават (' + s.svi.length + ')', s.svi, function (x) { return chMiniHtml(x, 'няма я в бележките от 3 работни дни', 'varni'); });
+    h += chFoldHtml('izp', 'Изпуснати (' + s.izp.length + ') — нищо не е излязло', s.izp, function (x) { return chMiniHtml(x, 'изтече ' + (x.iztT ? dm(new Date(x.iztT).toISOString()) : x.c.izticha ? dm(x.c.izticha) : '—') + ' — нищо не е излязло', 'varni'); });
+    h += chFoldHtml('got', 'Готово днес (' + s.got.length + ')', s.got, function (x) { return chMiniHtml(x, chDoneTxt(x, sp), '', true); });
+    h += '<button type="button" class="ch-fold" data-a="chIzhod"><span>📤 Какво излезе</span><span aria-hidden="true">›</span></button>';
+    return h;
+  }
+  function chIzDni() {
+    var o = { prosr: 0, dnes: 0, utre: 0 }, d0 = ymd(now()), d1 = ymd(new Date(nowMs() + 864e5));
+    (IZT.rows || []).forEach(function (r) { if (!r.na_men || !izOpen(r)) return; var s0 = izSrok(r); if (izOver(r)) o.prosr++; else if (s0 === d0) o.dnes++; else if (s0 === d1) o.utre++; });
+    return o;
+  }
+  function chDoLbl(iso) {
+    var d = new Date(iso); if (isNaN(d)) return '';
+    var n = now(), t = new Date(n.getFullYear(), n.getMonth(), n.getDate() + 1);
+    return sameDay(d, t) ? 'утре ' + hhmm(d) : sameDay(d, n) ? 'днес ' + hhmm(d) : 'на ' + ddmm(d);
+  }
+  // горе: „Чака теб: 7“ + целта и „събрано до“ + сутрешният лист; спряно изходящо — сив ред [§6.2, §4.10]
+  function chTopHtml(s, sp) {
+    var sv = svOf('chaka'), spi = svSpi(), lt = chListSt();
+    var sub = spi.spi ? '💻 лаптопът е изключен от ' + spi.ot + ' — новото идва, щом се включи' : 'цел — 0 до 23:30' + (sv && sv.posledno ? ' · събрано до ' + rel(sv.posledno) : '');
+    var ls = lt.fresh ? (lt.novBr ? '<button type="button" class="ch-ls" data-a="chList">☀️ Нов брифинг ' + esc(lt.novBr) + ' ›</button>' : '<button type="button" class="ch-ls" data-a="chList">☀️ Сутрешен лист ›</button>')
+      : '<button type="button" class="ch-ls off" data-a="chList">☀️ Листът ще е готов, щом се включи лаптопът' + (sv && sv.posledno ? ' (последно: ' + esc(rel(sv.posledno)) + ')' : '') + '</button>';
+    return '<div class="ch-top"><p class="ch-n">' + (s.N ? 'Чака теб: <b>' + s.N + '</b>' : '<b>✓ Чака теб: 0</b>') + '</p><p class="ch-s">' + esc(sub) + '</p>' + ls + '</div>' +
+      (sp.spran ? '<p class="ch-stopl">⛔ Изходящото е спряно' + (sp.ot ? ' (от ' + esc(dm(sp.ot)) + ')' : '') + ' — четенето продължава.</p>' : '');
+  }
+  function chFoldHtml(k, lbl, list, row) {
+    if (!list.length) return '';
+    var on = !!CH.fold[k];
+    return '<button type="button" class="ch-fold" data-a="chFold" data-v="' + k + '" aria-expanded="' + on + '"><span>' + (on ? '▾ ' : '▸ ') + esc(lbl) + '</span></button>' +
+      (on ? '<div class="ch-foldb">' + list.map(function (x) { try { return row(x); } catch (e) { chBadLog(e); return chBadHtml(x, 'ch-mini'); } }).join('') + '</div>' : '');
+  }
+  // ред в свит блок: заглавието + причината + „↺ Върни“
+  function chMiniHtml(x, why, act, done) {
+    try { return chMiniHtml0(x, why, act, done); } catch (e) { chBadLog(e); return chBadHtml(x, 'ch-mini'); }
+  }
+  function chMiniHtml0(x, why, act, done) {
+    var c = x.c, o = c.obekt || 'obshto', rz = done && x.L && x.L.rezultat ? x.L.rezultat : '';
+    return '<div class="ch-mini o-' + esc(o) + '" data-k="' + esc(c.kluch) + '"><div class="ch-mm"><span class="ochip o-' + esc(o) + '">' + esc(OBN[o] || o) + '</span><span class="ch-v">' + esc(chVidLbl(c, x)) + '</span></div>' +
+      '<p class="ch-mz">' + esc(chZag(c, x)) + '</p><p class="ch-mw">' + esc(why) + (rz ? ' · ' + esc(rz) : '') + '</p>' +
+      (act === 'varni' ? '<button type="button" class="ch-b sm" data-a="chVarni" data-k="' + esc(c.kluch) + '">↺ Върни</button>' : '') +
+      (done ? chDoneBtns(x) : '') + '</div>';
+  }
+  // бутоните на отговорена карта — свита на място и в „Готово днес“ (едни и същи) [§6.3, §6.4, Р4]
+  function chDoneBtns(x) {
+    var c = x.c, k = c.kluch, L = x.L || {};
+    if (x.st !== 'got' || L.vid === 'ne') return '';   // махнатата (✗) — без бутони
+    if (c.shablon === 'otgovor' && chMerged(c) && chItems(c).length) return chIzDoneHtml(x);   // П1-списъкът — „Копирай“ по задача (и след затварянето от лаптопа)
+    // „Пусни навън · мейл“: писмото е отворено, „✓ Пратих го“ още не — пак от картата (листът може да е затворен)
+    if (c.vid === 'pusni' && c.kanal === 'mail' && L.vid === 'da') return '<div class="ch-a two">' + chB('chMailRe', k, '✉ Отвори писмото пак') + chB('chMailPr', k, '✓ Пратих го', 'ok') + '</div>';
+    var ct = chCopyTx(x), u = c.vrazka && okZadUrl(c.vrazka) && (c.vid === 'pusni' || c.shablon === 'otgovor') ? c.vrazka : null;
+    return ct || u ? '<div class="ch-a two">' + (ct ? chB('chCopy', k, 'Копирай текста') : '') + (u ? zadLink(u, 'Отвори в Интранета ›', 'ch-b') : '') + '</div>' : '';
+  }
+  function chB(a, k, lbl, cls, ex) { return '<button type="button" class="ch-b' + (cls ? ' ' + cls : '') + '" data-a="' + a + '" data-k="' + esc(k) + '"' + (ex || '') + '>' + lbl + '</button>'; }
+  function chVidLbl(c, x) {
+    if (c.vid === 'odobri') { var n = ((x && x.dni) || (c.poleta || {}).dni || []).length; return n > 1 ? 'Одобри ' + n + ' дни' : 'Одобри деня'; }
+    if (c.vid === 'odobri_iz') return 'Одобри в Интранета';
+    if (c.vid === 'napomni') return 'Напомняния';
+    if (c.vid === 'pusni') return 'Пусни навън · ' + (c.kanal === 'mail' ? 'мейл' : c.kanal === 'intranet_zadacha' ? 'нова задача' : 'коментар');
+    if (c.vid === 'izberi') return 'Избери';
+    if (c.vid === 'proveri') return 'Провери ме';
+    if (c.vid === 'popalni') return c.shablon === 'otgovor' ? 'Попълни · отговор' : c.shablon === 'dnevnik' ? 'Попълни · решение от дневника' : c.shablon === 'zadacha' ? 'Попълни · задача' : 'Попълни · решение';
+    return c.vid || '';
+  }
+  // „Одобри“: заглавието се смята наново от още чакащите дни (§4.7)
+  function chZag(c, x) {
+    if (c.vid !== 'odobri') return c.zaglavie || '';
+    var d = (x && x.dni) || (c.poleta || {}).dni || [], o = OBN[c.obekt] || '';
+    if (!Array.isArray(d) || !d.length) return o || c.zaglavie || '';
+    // дни без истинска дата се броят, но не влизат в обхвата (§6.12 — нищо не гърми)
+    var ds = d.map(function (y) { return y && y.data; }).filter(chOkD).map(String).sort();
+    if (!ds.length) return o + (d.length > 1 ? ' (' + d.length + ' дни)' : '');
+    return d.length === 1 ? o + ' · ' + chDay(ds[0]) : o + ' (' + chDm(ds[0]) + (ds[ds.length - 1] !== ds[0] ? '–' + chDm(ds[ds.length - 1]) : '') + ')';
+  }
+  function chDtHtml(c, x) {
+    if (c.vid === 'pusni' && x.iztT) {
+      var d = new Date(x.iztT), n = now(), tm = new Date(n.getFullYear(), n.getMonth(), n.getDate() + 1);
+      if (x.iztT - nowMs() < 3 * 36e5) return '<span class="ch-d amb">изтича в ' + hhmm(d) + '</span>';
+      return '<span class="ch-d">' + (sameDay(d, n) ? 'до днес ' + hhmm(d) : sameDay(d, tm) ? 'до утре ' + hhmm(d) : 'до ' + ddmm(d)) + '</span>';
+    }
+    var dd = String(c.data || c.sazdadena || '').slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(dd) ? '<span class="ch-d">от ' + esc(ddmm(parseD(dd))) + '</span>' : '';
+  }
+  // малкият ред под бутоните — какво става след ✓ (точните текстове, §6.3)
+  function chFoot(c) {
+    if (c.vid === 'pusni') return c.kanal === 'mail' ? 'Отваря готово писмо в пощата — пращаш ти. После натисни „✓ Пратих го“, за да влезе в „Какво излезе“.'
+      : 'Сега нищо не излиза; щом включим писането (Стъпка 5), ще те питам пак. Нужно е днес → „Копирай текста“.';
+    if (c.vid === 'napomni') return 'Всяко „✉ Напомни“ отваря готово писмо до човека — пращаш ти. Който получи напомняне, не влиза тук 7 дни.';
+    if (c.vid === 'odobri_iz') return 'Одобряваш в Интранета. „✓ Одобрих го“ само скрива картата, докато Интранетът я покаже одобрена.';
+    if (c.vid === 'izberi') return 'Изборът се запомня; не се пита пак за същото.';
+    if (c.vid === 'proveri') return 'Мери дали черновите са точни. „Не е точно“ отива като поправка в сутрешния цикъл — вписан ден не се пренаписва.';
+    if (c.vid === 'odobri') return 'Одобряваш ден по ден — „Отвори“ започва от най-стария.';
+    if (c.shablon === 'otgovor') return 'Записва отговора. Сега нищо не излиза; щом включим писането (Стъпка 5), ще те питам пак. Нужно е днес → „Копирай текста“ и „Отвори в Интранета“.';
+    if (c.shablon === 'dnevnik') return 'Отговорът влиза в следващата чернова на деня.';
+    if (c.shablon === 'zadacha') return 'Отваря листа „→ Задача“ с готовия текст.';
+    return 'Записва решението в AiLab. В дневника не влиза само.';
+  }
+  // отговорената карта, свита на място: „✓ Записано · …“ (+ „Копирай текста“ / „Отвори в Интранета“ при Интранет) [§6.3, Р4]
+  function chDoneTxt(x, sp) {
+    var c = x.c, L = x.L || {}, v = L.vid;
+    // „влиза в следващата чернова“ — САМО за решенията от дневника (resheniq); решенията от агентите остават в AiLab [Р15]
+    if (x.st === 'skr') return x.ev === 'odobri' ? '✓ Одобрено' : x.ev === 'prd' ? '↳ Махнато — не е продължение' : x.ev === 'nap' ? '✓ Напомнено на всички' : x.ev === 'dn' ? '✓ Отговорено — влиза в следващата чернова на деня.' : '✓ Записано в AiLab.';
+    if (x.vse) {   // слята карта — отговорени са всичките ѝ неща (по podkluch)
+      if (c.vid === 'napomni') return '✓ Напомнено на всички';
+      if (c.shablon === 'otgovor') return '✓ Записано. Сега нищо не излиза; щом включим писането (Стъпка 5), ще те питам пак. Нужно е днес → „Копирай текста“ и „Отвори в Интранета“.';
+      if (c.vid === 'izberi') return '✓ Изборът е запомнен';
+      if (c.vid === 'pusni' && c.kanal !== 'mail') return '✓ Записано. Сега нищо не излиза; щом включим писането (Стъпка 5), ще те питам пак, преди да пусна. Нужно е днес → „Копирай текста“ и го пусни ти.';
+      return '✓ Записано в AiLab.';
+    }
+    if (v === 'ne') return 'Махнато';
+    if (c.vid === 'pusni' && c.kanal !== 'mail') return sp && sp.spran ? 'Записано · изходящото е спряно — нищо не излиза.'
+      : '✓ Записано. Сега нищо не излиза; щом включим писането (Стъпка 5), ще те питам пак, преди да пусна. Нужно е днес → „Копирай текста“ и го пусни ти.';
+    if (c.vid === 'pusni') return v === 'pratih' ? '✓ Пратено от теб — в „Какво излезе“' : '✉ Писмото е отворено — пращаш ти от Outlook; после натисни „✓ Пратих го“.';
+    if (c.vid === 'popalni' && c.shablon === 'otgovor') return '✓ Записано. Сега нищо не излиза; щом включим писането (Стъпка 5), ще те питам пак. Нужно е днес → „Копирай текста“ и „Отвори в Интранета“.';
+    if (c.vid === 'popalni' && c.shablon === 'zadacha') return '✓ Задачата е записана';
+    if (c.vid === 'odobri_iz') return '✓ Записано — щом Интранетът я покаже одобрена, картата изчезва.';
+    if (c.vid === 'izberi') { var iz = (c.izbori || []).filter(function (z) { return z && String(z.k) === String(L.tekst); })[0]; return '✓ Изборът е запомнен' + (iz && iz.ime ? ': ' + iz.ime : ''); }
+    if (c.vid === 'proveri') return v === 'ne' ? '✎ Поправката отива в сутрешния цикъл' : '✓ Вярно — благодаря';
+    if (c.vid === 'napomni') return '✓ Готово';
+    if (c.vid === 'odobri') return '✓ Одобрено';
+    return '✓ Записано в AiLab.';
+  }
+  // текстът за „Копирай“: изходящият (tekst_navan, редактираният), или отговорът по задача
+  function chCopyTx(x) {
+    var c = x.c, L = x.L || {};
+    if (c.vid === 'pusni' && c.kanal !== 'mail') return String((L.vid === 'da' && L.tekst) || c.tekst_navan || '');
+    if (c.vid === 'popalni' && c.shablon === 'otgovor') { var d = L.danni || chJ(L.danni) || {}; return chOtgTx(d); }
+    return '';
+  }
+  function chOtgTx(d) {
+    d = d || {};
+    if (d.izbor) return d.izbor === 'srok7' ? 'Нов срок: ' + chSrokDat(ymd(new Date(nowMs() + 7 * 864e5))) : d.izbor === 'gotovo' ? 'Готово — за затваряне.' : 'Не е моя задача.';
+    var p = [];
+    if (d.napraveno) p.push('Направено: ' + d.napraveno);
+    if (d.ostava) p.push('Остава: ' + d.ostava);
+    if (d.nov_srok) p.push('Нов срок: ' + chSrokDat(d.nov_srok));
+    return p.join(' · ');
+  }
+  function chSrokDat(s) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(s || '')); return m ? m[3] + '.' + m[2] + '.' + m[1] : String(s || ''); }
+  // --- една карта [§6.3] ---
+  // изкривени данни в една карта не бива да спират целия таб: картата се показва само със заглавието си [§6.12]
+  function chCardHtml(x, sp) {
+    try { return chCardHtml0(x, sp); } catch (e) { chBadLog(e); return chBadHtml(x, 'ch'); }
+  }
+  function chBadHtml(x, cls) {
+    var c = (x && x.c) || {}, o = OBN[c.obekt] ? c.obekt : 'obshto';
+    var tg = cls === 'ch' ? 'article' : 'div';
+    return '<' + tg + ' class="' + cls + ' o-' + o + '" data-k="' + esc(String(c.kluch || '')) + '"><p class="ch-z">' + esc(clip(oneLine(String(c.zaglavie || c.tekst || '—')), 200)) + '</p>' +
+      '<p class="ch-f">Картата не се показа цялата — данните ѝ са непълни; лаптопът ще я поправи при следващото събиране.</p>' +
+      (cls === 'ch' && x && x.st === 'akt' && c.kluch ? '<div class="ch-a one">' + chB('chNe', c.kluch, '✗ Махни') + '</div>' : '') + '</' + tg + '>';
+  }
+  function chBadLog(e) { CH.bad = String((e && e.message) || e || '').slice(0, 200); }   // тихо — само за проверка (CH.bad)
+  function chCardHtml0(x, sp) {
+    var c = x.c, k = c.kluch, o = c.obekt || 'obshto', ek = esc(k);
+    if (x.st !== 'akt') {   // отговорена в този изглед — свита на място (в „Готово днес“ при следващото отваряне на таба)
+      return '<article class="ch done o-' + esc(o) + '" data-k="' + ek + '"><p class="ch-ok">' + esc(x.st === 'otl' ? '⏰ Отложено до ' + chDoLbl(x.do) : chDoneTxt(x, sp)) + '</p>' +
+        chDoneBtns(x) + (x.L && x.L.rezultat ? '<p class="ch-f">' + esc(x.L.rezultat) + '</p>' : '') + '</article>';
+    }
+    var izt = c.vid === 'pusni' && x.iztT && x.iztT - nowMs() < 3 * 36e5, tx = c.tekst ? String(c.tekst) : '', lng = tx.length > 260 && !CH.more[k];
+    var h = '<article class="ch o-' + esc(o) + (izt ? ' izt' : '') + (c.vajnost >= 3 ? ' v3' : '') + '" data-k="' + ek + '">' +
+      '<div class="ch-m"><span class="ochip o-' + esc(o) + '">' + esc(OBN[o] || o) + '</span><span class="ch-v">' + esc(chVidLbl(c, x)) + '</span>' + chDtHtml(c, x) + '</div>' +
+      (c.poleta && c.poleta.predishen ? '<p class="ch-nov">Ново по темата</p>' : '') +
+      '<p class="ch-z">' + esc(chZag(c, x)) + '</p>' +
+      (tx && c.vid !== 'pusni' ? '<p class="ch-t' + (lng ? ' cl' : '') + '">' + esc(tx) + '</p>' + (tx.length > 260 ? '<button type="button" class="lnk ch-more" data-a="chMore" data-k="' + ek + '">' + (CH.more[k] ? 'по-малко' : 'още ›') + '</button>' : '') : '');
+    h += chBody(x, sp);
+    if (c.iztochnik || (c.izvori || []).length || c.vrazka) h += '<button type="button" class="ch-src" data-a="chSrc" data-k="' + ek + '">Източник: ' + esc(clip(c.iztochnik || (AGN[c.agent] || 'източниците'), 90)) + ' ›</button>';
+    h += chBtns(x, sp);
+    h += '<p class="ch-f">' + esc(chFoot(c)) + '</p>';
+    return h + '</article>';
+  }
+  function chOtlHtml(k, odobri) {
+    return '<div class="ch-a ' + (odobri ? 'two' : 'three') + '">' + (odobri ? chB('chOtlGo', k, 'Не тази вечер', '', ' data-v="utre"') : chB('chOtlGo', k, 'Утре 08:00', '', ' data-v="utre"') + chB('chOtlGo', k, 'След 2 дни', '', ' data-v="2dni"')) +
+      chB('chOtlX', k, 'Откажи', 'ghost') + '</div>';
+  }
+  // съдържанието по вид
+  function chBody(x, sp) {
+    var c = x.c, k = c.kluch, ek = esc(k), pl0 = c.poleta || {}, h = '';
+    var info = (c.grupa || []).filter(function (g) { return g && !g.podkluch && g.tekst; });
+    if (c.vid === 'odobri') {
+      h += '<ul class="ch-g">' + (x.dni || []).map(function (d) {
+        var p = [d.versiq ? 'v' + d.versiq : '', d.sabrano ? 'събрано до ' + d.sabrano : ''].filter(Boolean).join(' · ');
+        var q = [d.za_reshenie ? d.za_reshenie + ' за решение' : '', d.za_pregled ? d.za_pregled + ' за преглед' : ''].filter(Boolean).join(' · ');
+        return '<li><b>' + esc(chDay(d.data) || 'ден без дата') + '</b>' + (p ? ' · ' + esc(p) : '') + (q ? '<br>⏳ ' + esc(q) : '') + (d.nesigurni ? '<br><span class="amber">⚠ ' + esc(d.nesigurni) + ' ' + pl(+d.nesigurni, 'несигурна', 'несигурни') + ' — виж ги първо</span>' : '') + '</li>';
+      }).join('') + '</ul>';
+      return h;
+    }
+    if (c.vid === 'popalni' && c.shablon === 'dnevnik' && chMerged(c)) {
+      // до 3 точки + „Покажи всички (N) ›“ — картата не става цял екран [§6.3: до 6 реда, „още ›“]
+      // отговорените отпреди не се показват; отговорените сега остават на мястото си, сиви
+      var gl = (c.grupa || []).filter(function (g) { return g && g.tochka_id != null && (!chDnZatv(+g.tochka_id) || CH.itNow[+g.tochka_id]); }), gv = CH.more[k] ? gl : gl.slice(0, 3);
+      return '<div class="ch-items">' + gv.map(function (g) {
+        var tid = +g.tochka_id, dn = chDnZatv(tid);
+        return '<div class="ch-it' + (dn ? ' ok' : '') + '"><p>' + (chOkD(g.data) ? '<span class="mono">' + esc(chDay(g.data)) + '</span> · ' : '') + esc(g.tekst || '') + '</p>' +
+          (dn ? '<p class="ch-itok">✓ отговорено</p>' : '<div class="ch-a three dn3">' + '<button type="button" class="ch-b ok" data-a="tOk" data-tid="' + esc(tid) + '" data-k="' + ek + '">✓ Отговорено</button>' +
+            '<button type="button" class="ch-b" data-a="tFix" data-tid="' + esc(tid) + '" data-k="' + ek + '">✎ Поясни</button><button type="button" class="ch-b" data-a="tAct" data-tid="' + esc(tid) + '" data-k="' + ek + '">→ Задача</button></div>') + '</div>';
+      }).join('') + '</div>' + (gl.length > 3 ? '<button type="button" class="lnk ch-more" data-a="chMore" data-k="' + ek + '">' + (CH.more[k] ? 'По-малко' : 'Покажи всички (' + gl.length + ') ›') + '</button>' : '');
+    }
+    if (info.length) h += '<ul class="ch-g">' + info.slice(0, 8).map(function (g) { return '<li>' + esc(g.tekst) + '</li>'; }).join('') + '</ul>';
+    if (c.vid === 'popalni' && c.shablon === 'otgovor') return h + (k === 'iz:spisak' ? chIzListHtml(x) : chOtgFields(c, pl0, k));
+    if (c.vid === 'popalni' && c.shablon === 'reshenie') {
+      var pr = pl0.predishen ? (typeof pl0.predishen === 'object' ? pl0.predishen : { tekst: String(pl0.predishen) }) : null;
+      if (pr) h += '<p class="ch-pr">Предишният ти отговор' + (pr.kogda ? ' (' + esc(rel(pr.kogda)) + ')' : '') + ': ' + esc(pr.tekst || '—') + '</p>';
+      var its = chItems(c);
+      if (its.length >= 2) h += '<div class="ch-items">' + its.map(function (g) {
+        var dn = chItemDone(c, g, null, x.list);
+        return '<div class="ch-it row' + (dn ? ' ok' : '') + '"><p>' + esc(g.tekst || '') + (g.iztochnik ? ' <span class="small muted">· ' + esc(clip(g.iztochnik, 60)) + '</span>' : '') + '</p>' +
+          (dn ? '<span class="ch-itok">✓</span>' : '<button type="button" class="ch-b sm ok" data-a="chItOk" data-k="' + ek + '" data-pk="' + esc(g.podkluch) + '" aria-label="Решено — само това">✓</button>') + '</div>';
+      }).join('') + '</div>';
+      if (pl0.kandidat) h += '<p class="ch-kand">' + esc(pl0.kandidat) + '</p>';
+      h += '<label class="ch-fl"><span>Решението ти</span><textarea rows="2" data-chf="reshenie" data-k="' + ek + '" placeholder="Какво решаваш? (по желание)">' + esc(CH.ed[k + '|reshenie'] || '') + '</textarea></label>';
+      return h;
+    }
+    if (c.vid === 'pusni') {
+      var nv = String(c.tekst_navan || '');
+      if (CH.open[k] === 'ed') return h + '<label class="ch-fl"><span>Текстът навън</span><textarea rows="5" data-chf="navan" data-k="' + ek + '">' + esc(CH.ed[k + '|navan'] != null ? CH.ed[k + '|navan'] : nv) + '</textarea></label>';
+      return h + (nv ? '<p class="ch-nv">' + esc(nv) + '</p>' : '');
+    }
+    if (c.vid === 'napomni') {
+      var nr = chItems(c);
+      return h + '<div class="ch-items">' + nr.map(function (g) {
+        var dn = chItemDone(c, g, chIdx(), x.list), ad = chNapAdr(g);
+        return '<div class="ch-it' + (dn ? ' ok' : '') + '"><p><b>' + esc(g.ime || '') + '</b>' + (g.tekst && g.tekst !== g.ime ? ' · ' + esc(String(g.tekst).replace(String(g.ime || '') + ' · ', '')) : '') + '</p>' +
+          (dn ? '<p class="ch-itok">✓ напомнено</p>' : (ad.length ? '' : '<p class="small muted">няма мейл в архива</p>') + '<div class="ch-a two">' +
+            '<button type="button" class="ch-b" data-a="chNap" data-k="' + ek + '" data-pk="' + esc(g.podkluch) + '">✉ Напомни</button>' +
+            '<button type="button" class="ch-b ghost" data-a="chNapCopy" data-k="' + ek + '" data-pk="' + esc(g.podkluch) + '">Копирай текста</button></div>') + '</div>';
+      }).join('') + '</div>';
+    }
+    if (c.vid === 'izberi' && pl0.sreshta) h += '<p class="ch-sr">срещу: ' + esc(pl0.sreshta) + '</p>';
+    if (c.vid === 'proveri' && CH.open[k] === 'ed') h += '<label class="ch-fl"><span>' + CH_SV + '</span><textarea rows="3" data-chf="vyarno" data-k="' + ek + '" placeholder="напр. кофражът е до ос 6, не до ос 7">' + esc(CH.ed[k + '|vyarno'] || '') + '</textarea></label>';
+    return h;
+  }
+  // „Попълни · отговор по #N“ — Направено · Остава · Нов срок; без данни — три бутона с по едно докосване [§6.3]
+  function chOtgFields(c, p, k) {
+    var ek = esc(k), bez = p.bez_danni && CH.open[k] !== 'fill';
+    var h = (p.iztochnici ? '<p class="ch-ot">от: ' + esc(p.iztochnici) + '</p>' : '');
+    if (bez) return h + '<div class="ch-a three b3">' + chB('chIzBtn', k, 'Нов срок +1 седмица', '', ' data-v="srok7"') + chB('chIzBtn', k, 'Готово — за затваряне', '', ' data-v="gotovo"') + chB('chIzBtn', k, 'Не е мое', '', ' data-v="ne_moe"') + '</div>' +
+      '<button type="button" class="lnk ch-fill" data-a="chFill" data-k="' + ek + '">или попълни ›</button>';
+    function v(f) { var x = CH.ed[k + '|' + f]; return x != null ? x : (p[f] || ''); }
+    return h + '<label class="ch-fl"><span>Направено</span><textarea rows="2" data-chf="napraveno" data-k="' + ek + '">' + esc(v('napraveno')) + '</textarea></label>' +
+      '<label class="ch-fl"><span>Остава</span><textarea rows="2" data-chf="ostava" data-k="' + ek + '">' + esc(v('ostava')) + '</textarea></label>' +
+      '<label class="ch-fl"><span>Нов срок</span><input type="date" data-chf="nov_srok" data-k="' + ek + '" value="' + esc(String(v('nov_srok')).slice(0, 10)) + '"></label>' +
+      '<div class="chips ch-sc">' + chB('chSrok', k, '+3 дни', 'chip', ' data-v="3"') + chB('chSrok', k, '+1 седмица', 'chip', ' data-v="7"') + chB('chSrok', k, 'без нов срок', 'chip', ' data-v="0"') + '</div>';
+  }
+  // карта-списък „Интранет: N задачи на теб“ — ред на задача → лист; „+1 седмица на всички без данни“ [§4.1]
+  function chIzListHtml(x) {
+    var c = x.c, ek = esc(c.kluch), its = chItems(c), X = chIdx(), bez = 0;
+    var h = '<div class="ch-items">' + its.map(function (g) {
+      var dn = chItemDone(c, g, X, x.list), p = chIzP(g), ov = chOkD(g.data) ? daysTo(String(g.data)) : null;
+      if (!dn && p.bez_danni) bez++;
+      var sr = ov == null ? '' : ov < 0 ? 'просрочена ' + (-ov) + ' ' + pl(-ov, 'ден', 'дни') : ov === 0 ? 'срок днес' : ov === 1 ? 'срок утре' : 'до ' + chDm(g.data);
+      return '<button type="button" class="ch-izr' + (dn ? ' ok' : '') + '" data-a="chIz" data-k="' + ek + '" data-pk="' + esc(g.podkluch) + '"><span class="ch-izt">#' + esc(g.tid || '') + ' · ' + esc(OBN[g.obekt] || '—') + ' · ' + esc(clip(g.tekst || '', 60)) + '</span>' +
+        '<span class="ch-izm' + (ov != null && ov < 0 && !dn ? ' amber' : '') + '">' + (dn ? '✓ записано' : esc(sr) + (p.bez_danni ? ' · без данни' : ' · попълнено')) + '</span><span class="ch-izg" aria-hidden="true">›</span></button>';
+    }).join('') + '</div>';
+    if (bez) h += '<button type="button" class="ch-b wide" data-a="chIzVse" data-k="' + ek + '">+1 седмица на всички без данни (' + bez + ')</button>';
+    return h;
+  }
+  function chIzP(g) { var p = chJ(g.poleta) || {}; ['napraveno', 'ostava', 'nov_srok', 'bez_danni', 'iztochnici', 'vrazka'].forEach(function (f) { if (p[f] == null && g[f] != null) p[f] = g[f]; }); return p; }
+  // бутоните по вид [§4.1]
+  function chBtns(x, sp) {
+    var c = x.c, k = c.kluch, ek = esc(k), m = CH.open[k], izU = c.vrazka && okZadUrl(c.vrazka) ? c.vrazka : null;
+    if (m === 'otl') return chOtlHtml(k, c.vid === 'odobri');
+    if (c.vid === 'odobri') {
+      var d = x.dni || [];
+      return '<div class="ch-a ' + (d.length === 1 ? 'three' : 'two') + '">' + chB('chOdOpen', k, d.length === 1 ? 'Отвори ›' : 'Отвори най-стария ›') +
+        (d.length === 1 ? chB('chOdOk', k, '✓ Одобри' + (chOkD(d[0].data) ? ' ' + esc(chDay(d[0].data)) : ' деня'), 'ok') : '') + chB('chOtlGo', k, '⏰ Не тази вечер', '', ' data-v="utre"') + '</div>';
+    }
+    if (c.vid === 'popalni' && c.shablon === 'dnevnik') {
+      if (chMerged(c)) return '<div class="ch-a one">' + chB('chOtl', k, '⏰ Отложи всички') + '</div>';
+      var tid = esc((c.poleta || {}).tochka_id);
+      return '<div class="ch-a four d4"><button type="button" class="ch-b ok" data-a="tOk" data-tid="' + tid + '" data-k="' + ek + '">✓ Отговорено</button>' +
+        '<button type="button" class="ch-b" data-a="tFix" data-tid="' + tid + '" data-k="' + ek + '">✎ Поясни</button><button type="button" class="ch-b" data-a="tAct" data-tid="' + tid + '" data-k="' + ek + '">→ Задача</button>' + chB('chOtl', k, '⏰ Отложи') + '</div>';
+    }
+    if (c.vid === 'odobri_iz') return '<div class="ch-a ' + (izU ? 't2' : 'w0') + '">' + (izU ? zadLink(izU, 'Отвори в Интранета ›', 'ch-b') : '') + chB('chOk', k, '✓ Одобрих го', 'ok') + chB('chOtl', k, '⏰', '', ' aria-label="Отложи"') + '</div>';
+    if (c.vid === 'popalni' && c.shablon === 'otgovor') {
+      if (k === 'iz:spisak') return '<div class="ch-a one">' + chB('chOtl', k, '⏰ Отложи списъка') + '</div>';
+      return (izU ? '<div class="ch-a one">' + zadLink(izU, 'Отвори в Интранета ›', 'ch-b') + '</div>' : '') +
+        '<div class="ch-a ' + (c.poleta.bez_danni && CH.open[k] !== 'fill' ? 'two' : 'w1') + '">' + (c.poleta.bez_danni && CH.open[k] !== 'fill' ? '' : chB('chOtgSave', k, '✓ Запиши', 'ok')) + chB('chOtl', k, '⏰', '', ' aria-label="Отложи"') + chB('chNe', k, '✗', '', ' aria-label="Махни"') + '</div>';
+    }
+    if (c.vid === 'popalni' && c.shablon === 'reshenie') return '<div class="ch-a four">' + chB('chOk', k, '✓ Решено', 'ok') + chB('chZad', k, '→ Задача') + chB('chOtl', k, '⏰', '', ' aria-label="Отложи"') + chB('chNe', k, '✗', '', ' aria-label="Махни"') + '</div>';
+    if (c.vid === 'popalni' && c.shablon === 'zadacha') return '<div class="ch-a w1">' + chB('chZad', k, '→ Задача', 'ok') + chB('chOtl', k, '⏰', '', ' aria-label="Отложи"') + chB('chNe', k, '✗', '', ' aria-label="Махни"') + '</div>';
+    if (c.vid === 'pusni') {
+      if (m === 'ed') return '<div class="ch-a two">' + chB('chEdOk', k, c.kanal === 'mail' ? '✓ Така — отвори писмото' : '✓ Така', 'ok') + chB('chEdX', k, 'Откажи', 'ghost') + '</div>';
+      var a = c.kanal === 'mail' ? chB('chMail', k, '✉ Отвори писмото', 'ok') : chB('chOk', k, '✓', 'ok', ' aria-label="Да — запиши решението"');
+      return '<div class="ch-a four p4">' + a + chB('chEd', k, '✎', '', ' aria-label="Промени текста"') + chB('chOtl', k, '⏰', '', ' aria-label="Отложи"') + chB('chNe', k, '✗', '', ' aria-label="Махни"') + '</div>';
+    }
+    if (c.vid === 'napomni') return '<div class="ch-a w0">' + chB('chOk', k, '✓ Готово', 'ok') + chB('chOtl', k, '⏰', '', ' aria-label="Отложи"') + '</div>';
+    if (c.vid === 'izberi') {
+      var iz = (c.izbori || []).filter(function (z) { return z && z.k != null; }).slice(0, 3);
+      return '<div class="ch-a ' + (iz.length >= 3 ? 'izb3' : 't2') + '">' + iz.map(function (z) { return chB('chIzb', k, esc(z.ime || z.k), '', ' data-v="' + esc(z.k) + '"'); }).join('') + chB('chOtl', k, '⏰', '', ' aria-label="Отложи"') + '</div>';
+    }
+    if (c.vid === 'proveri') {
+      if (m === 'ed') return '<div class="ch-a two">' + chB('chPrvSave', k, 'Запиши поправката', 'ok') + chB('chEdX', k, 'Откажи', 'ghost') + '</div>';
+      return '<div class="ch-a t2">' + chB('chOk', k, '✓ Вярно', 'ok') + chB('chEd', k, '✎ Не е точно') + chB('chOtl', k, '⏰', '', ' aria-label="Отложи"') + '</div>';
+    }
+    return '';
+  }
+
+  // ---------- действията [§4.1, §4.3] ----------
+  function chFind(k) { var s = chakaState(); return s.all[k] || null; }
+  function chRow(c, vid, o) {
+    o = o || {};
+    var r = { kluch: c.kluch, vid: vid, ustroistvo: device() + ' · чака теб' };
+    if (typeof c.id === 'number') r.karta_id = c.id;
+    if (o.pk) r.podkluch = o.pk;
+    if (o.tekst != null && String(o.tekst) !== '') r.tekst = clip(String(o.tekst), 4000);
+    if (o.danni) r.danni = o.danni;
+    return r;
+  }
+  // всеки отговор — в опашката веднага (задържан 5 с, „Отмени“ в лентата долу); картата се свива на място [§6.3]
+  function chSend(c, vid, o) {
+    o = o || {};
+    if (CH.st === 'missing') { toast('„Чака теб“ още не е в облака — отговорът не може да се запише.', 'bad'); return false; }
+    // отговорът е прочетен от полето → полето се освобождава, за да се свие картата веднага (iOS не мести фокуса на бутона)
+    if (chTyping()) { try { document.activeElement.blur(); } catch (e) {} }
+    var rows = o.rows || [chRow(c, vid, o)];
+    if (!o.noDone) CH.done[c.kluch] = 1;
+    undoStart({ key: 'ch:' + c.kluch + ':' + (rows[0].podkluch || '') + ':' + vid, kind: 'ch', lbl: o.lbl || 'Записано', tbl: 'chaka_otgovori', row: rows[0],
+      more: rows.slice(1).map(function (r) { return { tbl: 'chaka_otgovori', row: r }; }).concat(o.extra || []), why: o.why ? c.kluch : null,
+      back: function () { if (!o.noDone) delete CH.done[c.kluch]; if (o.back) o.back(); },
+      done: function () { if (view === 'chaka') renderChaka(); }, fail: function () { if (view === 'chaka') renderChaka(); } });
+    if (o.toast) toast(o.toast);
+    return true;
+  }
+  function chOk(k) {
+    var x = chFind(k); if (!x || x.st !== 'akt') return;
+    var c = x.c;
+    if (c.vid === 'popalni' && c.shablon === 'reshenie') {
+      var rs = (CH.ed[k + '|reshenie'] || '').trim(), its = chItems(c);
+      if (its.length >= 2 && x.rest && x.rest.length) {   // голямото ✓ — по един ред на всяко неотговорено нещо
+        chSend(c, 'popalni', { rows: x.rest.map(function (g) { return chRow(c, 'popalni', { pk: g.podkluch, danni: { reshenie: rs } }); }), lbl: '✓ Решено (' + x.rest.length + ')' });
+      } else chSend(c, 'popalni', { danni: { reshenie: rs }, lbl: '✓ Решено' });
+      delete CH.ed[k + '|reshenie'];
+      return;
+    }
+    if (c.vid === 'pusni') { chSend(c, 'da', { lbl: '✓ Записано · нищо не излиза' }); return; }
+    if (c.vid === 'napomni') { chSend(c, 'da', { lbl: '✓ Готово' }); return; }
+    if (c.vid === 'odobri_iz') { chSend(c, 'da', { lbl: '✓ Одобрих го' }); return; }
+    if (c.vid === 'proveri') { chSend(c, 'da', { lbl: '✓ Вярно' }); return; }
+    chSend(c, 'da');
+  }
+  function chNe(k) {
+    var x = chFind(k); if (!x || x.st !== 'akt') return;
+    // ✗ → картата изчезва веднага; остава само лентата „Махнато · Защо? · Отмени“ (в „Готово днес“ — до полунощ) [§4.1, §6.3]
+    delete CH.open[k];
+    chSend(x.c, 'ne', { lbl: 'Махнато', why: true, noDone: true });
+  }
+  function chItOk(k, pk) {
+    var x = chFind(k); if (!x || x.st !== 'akt') return;
+    chSend(x.c, 'popalni', { pk: pk, danni: { reshenie: '' }, lbl: '✓ Решено — само това' });
+  }
+  // ⏰ → „Утре 08:00“ / „След 2 дни“ (08:00 по часовника на телефона); „Одобри“ — „Не тази вечер“ [§4.1]
+  function chOtlGo(k, v) {
+    var x = chFind(k); if (!x) return;
+    var n = now(), d = new Date(n.getFullYear(), n.getMonth(), n.getDate() + (v === '2dni' ? 2 : 1), 8, 0, 0, 0);
+    delete CH.open[k];
+    chSend(x.c, 'otlozhi', { danni: { do: d.toISOString() }, lbl: '⏰ Отложено до ' + (v === '2dni' ? ddmm(d) + ' 08:00' : 'утре 08:00') });
+    toast(v === '2dni' ? 'Отложено до ' + ddmm(d) + ' 08:00.' : 'Отложено до утре 08:00.');
+  }
+  function chVarni(k) {
+    var x = chFind(k); if (!x) return;
+    chSend(x.c, 'varni', { lbl: '↺ Върната', noDone: true });
+  }
+  function chIzb(k, v) {
+    var x = chFind(k); if (!x || x.st !== 'akt') return;
+    var c = x.c, z = (c.izbori || []).filter(function (y) { return y && String(y.k) === String(v); })[0], ex = [];
+    // „↳“ „Не е“ → и съществуващото vrazka_ne (връзката се маха и в Преглед) [§6.5]
+    if (/^prd:/.test(c.kluch) && String(v) === 'ne') { var rv = chVrazkaRow(c.poleta || {}); if (rv) ex.push({ tbl: 'resheniq', row: rv, meta: { tt: c.zaglavie } }); }
+    chSend(c, 'izbor', { tekst: String(v), extra: ex, lbl: '✓ ' + (z ? z.ime : 'Избрано') });
+  }
+  function chVrazkaRow(p) {
+    var tid = +p.tochka_id, den = +p.den_id; if (isNaN(tid) || isNaN(den)) return null;
+    var d = dniById(den) || findDni(den) || (S.den && S.den.id === den ? S.den : null) || {};
+    return { den_id: den, tochka_id: tid, vid: 'vrazka_ne', versiq: d.versiq != null ? d.versiq : (p.versiq != null ? p.versiq : null), hesh: d.hesh || null, ustroistvo: device() + ' · чака теб' };
+  }
+  // „↳“ под точката в Преглед: „Да“ / „Не“ (един отговор затваря и картата „Избери“) [§6.5]
+  function chPrdGo(tid, da) {
+    var t = findT(tid), d = S.den; if (!t || !d) return;
+    var c = (CH.karti || []).filter(function (y) { return y.kluch === 'prd:' + tid; })[0] || { kluch: 'prd:' + tid, id: null };
+    if (CH.st === 'missing') { if (!da) prdNe(tid); else toast('„Чака теб“ още не е в облака — засега „Да“ не се помни.'); return; }
+    var ex = da ? [] : [{ tbl: 'resheniq', row: { den_id: d.id, tochka_id: tid, vid: 'vrazka_ne', versiq: d.versiq, hesh: d.hesh || null, ustroistvo: device() }, meta: { tt: t.tekst } }];
+    chSend(c, 'izbor', { tekst: da ? 'da' : 'ne', extra: ex, lbl: da ? '↳ Да — продължение е' : '↳ Махнато', noDone: true });
+    keepAnchor(function () { renderGroups(); });
+    if (WIDE) renderPan(true);
+  }
+  function chEd(k) { var x = chFind(k); if (!x) return; CH.open[k] = 'ed'; renderChaka(); setTimeout(function () { var f = document.querySelector('#chk .ch[data-k="' + k.replace(/["\\]/g, '') + '"] textarea'); if (f) quietFocus(f); }, 30); }
+  function chEdX(k) { delete CH.open[k]; delete CH.ed[k + '|navan']; delete CH.ed[k + '|vyarno']; renderChaka(); }
+  function chEdOk(k) {
+    var x = chFind(k); if (!x) return;
+    var c = x.c, tx = CH.ed[k + '|navan'];
+    tx = tx != null ? String(tx) : String(c.tekst_navan || '');
+    delete CH.open[k];
+    if (c.vid === 'pusni' && c.kanal === 'mail') { chMailGo(k, tx); return; }
+    chSend(c, 'da', { tekst: tx !== String(c.tekst_navan || '') ? tx : null, lbl: '✓ Записано · нищо не излиза' });
+    delete CH.ed[k + '|navan'];
+  }
+  // „Провери ме“ → „Не е точно“: ne с текста И resheniq popravka за точката (сутрешният цикъл, стъпка 4а) [§4.1]
+  function chPrvSave(k) {
+    var x = chFind(k); if (!x) return;
+    var c = x.c, p = c.poleta || {}, tx = String(CH.ed[k + '|vyarno'] || '').trim();
+    if (!tx) { toast('Напиши кое е вярното.', 'bad'); return; }
+    var den = +p.den_id, d = dniById(den) || findDni(den) || {}, ex = [];
+    if (!isNaN(+p.tochka_id) && !isNaN(den)) ex.push({ tbl: 'resheniq', row: { den_id: den, tochka_id: +p.tochka_id, vid: 'popravka', tekst: clip(tx, 1000), versiq: d.versiq != null ? d.versiq : (p.versiq != null ? p.versiq : null), hesh: d.hesh || null, ustroistvo: device() + ' · провери ме' }, meta: { tt: c.tekst } });
+    delete CH.open[k]; delete CH.ed[k + '|vyarno'];
+    chSend(c, 'ne', { tekst: tx, extra: ex, lbl: '✎ Поправката е записана' });
+  }
+  // „Попълни · отговор“ (една задача): полетата или трите бутона
+  function chOtgSave(k) {
+    var x = chFind(k); if (!x) return;
+    var c = x.c, d = {};
+    ['napraveno', 'ostava', 'nov_srok'].forEach(function (f) { var v = CH.ed[k + '|' + f]; v = v != null ? v : (c.poleta[f] || ''); if (String(v).trim()) d[f] = String(v).trim(); });
+    if (!d.napraveno && !d.ostava && !d.nov_srok) { toast('Попълни поне едно поле — или „⏰“.', 'bad'); return; }
+    ['napraveno', 'ostava', 'nov_srok'].forEach(function (f) { delete CH.ed[k + '|' + f]; });
+    chSend(c, 'popalni', { danni: d, lbl: '✓ Записано · нищо не излиза' });
+  }
+  function chIzBtn(k, v, pk) {
+    var x = chFind(k); if (!x) return;
+    var lb = v === 'srok7' ? '✓ Нов срок +1 седмица' : v === 'gotovo' ? '✓ Готово — за затваряне' : '✓ Не е мое';
+    if (pk) { chSend(x.c, 'popalni', { pk: pk, danni: { izbor: v }, lbl: lb }); if (sheetKind === 'chiz') closeSheet(); return; }
+    chSend(x.c, 'popalni', { danni: { izbor: v }, lbl: lb });
+  }
+  function chIzVse(k) {
+    var x = chFind(k); if (!x) return;
+    var c = x.c, X = chIdx(), r = chItems(c).filter(function (g) { return !chItemDone(c, g, X, x.list) && chIzP(g).bez_danni; });
+    if (!r.length) return;
+    chSend(c, 'popalni', { rows: r.map(function (g) { return chRow(c, 'popalni', { pk: g.podkluch, danni: { izbor: 'srok7' } }); }), lbl: '✓ +1 седмица на ' + r.length });
+  }
+  // ред от картата-списък → лист с трите полета/бутона
+  function chIzOpen(k, pk) {
+    var x = chFind(k); if (!x) return;
+    var g = chItems(x.c).filter(function (y) { return y.podkluch === pk; })[0]; if (!g) return;
+    var p = chIzP(g), dn = chItemDone(x.c, g, chIdx(), x.list), u = p.vrazka || g.vrazka || (izFind(g.tid) || {}).link;
+    // отговорено → полетата показват отговора ти (за „Копирай текста“ и поправка); иначе — попълненото от лаптопа
+    var dd = dn && dn.danni ? (chJ(dn.danni) || dn.danni || {}) : null, otx = dd ? chOtgTx(dd) : '';
+    var e = function (f) { return esc((dd && !dd.izbor ? dd[f] : p[f]) || ''); };
+    CH.izSh = { k: k, pk: pk };
+    openSheet('🗂️ #' + (g.tid || '') + ' · ' + (OBN[g.obekt] || ''), '<p class="sh-q">' + esc(g.tekst || '') + '</p>' +
+      (dn ? '<p class="pt-ok">✓ Отговорът е записан. Сега нищо не излиза; щом включим писането (Стъпка 5), ще те питам пак. Нужно е днес → „Копирай текста“ и „Отвори в Интранета“.</p>' +
+        (otx ? '<p class="ch-nv">' + esc(otx) + '</p>' : '') : '') +
+      (p.iztochnici ? '<p class="small muted">от: ' + esc(p.iztochnici) + '</p>' : '') +
+      (p.bez_danni && !dn ? '<div class="ch-a three b3">' + chB('chIzBtn', k, 'Нов срок +1 седмица', '', ' data-v="srok7" data-pk="' + esc(pk) + '"') + chB('chIzBtn', k, 'Готово — за затваряне', '', ' data-v="gotovo" data-pk="' + esc(pk) + '"') +
+        chB('chIzBtn', k, 'Не е мое', '', ' data-v="ne_moe" data-pk="' + esc(pk) + '"') + '</div><p class="small muted">или попълни:</p>' : '') +
+      '<label class="fld">Направено<textarea id="chIzN" rows="2">' + e('napraveno') + '</textarea></label><label class="fld">Остава<textarea id="chIzO" rows="2">' + e('ostava') + '</textarea></label>' +
+      '<label class="fld">Нов срок<input type="date" id="chIzS" value="' + esc(String((dd && !dd.izbor ? dd.nov_srok : p.nov_srok) || '').slice(0, 10)) + '"></label>' +
+      // в Стъпка 3 нищо не излиза само → „Копирай текста“ е единственият път на отговора до Интранета [Р4]
+      '<div class="ch-a two">' + chB('chIzCopy', k, 'Копирай текста', '', ' data-pk="' + esc(pk) + '"') + (u && okZadUrl(u) ? zadLink(u, 'Отвори в Интранета ›', 'ch-b') : '') + '</div>' +
+      '<div class="sh-save"><button type="button" class="btn big" data-a="chIzSave">✓ Запиши</button></div>', 'chiz');
+  }
+  // „Копирай текста“ по задача: записаният отговор, иначе — каквото е в полетата на листа (Направено · Остава · Нов срок)
+  function chIzCopy(k, pk) {
+    var x = chFind(k); if (!x) return;
+    var L = chLast(x.list, pk), t = L && CH_GOT[L.vid] ? chOtgTx(chJ(L.danni) || L.danni || {}) : '';
+    if (!t && sheetKind === 'chiz') t = chOtgTx({ napraveno: (($('#chIzN') || {}).value || '').trim(), ostava: (($('#chIzO') || {}).value || '').trim(), nov_srok: ($('#chIzS') || {}).value || '' });
+    if (!t) { var g = chItems(x.c).filter(function (y) { return y.podkluch === pk; })[0], p = g ? chIzP(g) : {}; t = chOtgTx({ napraveno: p.napraveno, ostava: p.ostava, nov_srok: p.nov_srok }); }
+    if (!t) { toast('Няма текст за копиране — попълни полетата.'); return; }
+    copyText(t).then(function (ok) { toast(ok ? 'Копирано — постави го в Интранета.' : 'Не можах да копирам — задръж върху текста.'); });
+  }
+  // П1-списъкът, отговорен цял: по задача — отговорът, „Копирай текста“ и „Отвори в Интранета ›“ [Р4, §6.3]
+  function chIzDoneHtml(x) {
+    var c = x.c;
+    return '<div class="ch-items">' + chItems(c).map(function (g) {
+      var L = chLast(x.list, g.podkluch), p = chIzP(g), u = p.vrazka || g.vrazka || (izFind(g.tid) || {}).link;
+      var t = L && CH_GOT[L.vid] ? chOtgTx(chJ(L.danni) || L.danni || {}) : '';
+      var bt = (t ? chB('chIzCopy', c.kluch, 'Копирай текста', '', ' data-pk="' + esc(g.podkluch) + '"') : '') + (u && okZadUrl(u) ? zadLink(u, 'Отвори в Интранета ›', 'ch-b') : '');
+      return '<div class="ch-it"><p>#' + esc(g.tid || '') + ' · ' + esc(clip(g.tekst || '', 60)) + (t ? '<br><span class="small muted">' + esc(t) + '</span>' : '') + '</p>' +
+        (bt ? '<div class="ch-a two">' + bt + '</div>' : '') + '</div>';
+    }).join('') + '</div>';
+  }
+  function chIzSave() {
+    var z = CH.izSh; if (!z) return;
+    var x = chFind(z.k); if (!x) { closeSheet(); return; }
+    var d = {}, n = ($('#chIzN') || {}).value || '', o = ($('#chIzO') || {}).value || '', s = ($('#chIzS') || {}).value || '';
+    if (n.trim()) d.napraveno = n.trim(); if (o.trim()) d.ostava = o.trim(); if (s) d.nov_srok = s;
+    if (!d.napraveno && !d.ostava && !d.nov_srok) { toast('Попълни поне едно поле.', 'bad'); return; }
+    closeSheet();
+    chSend(x.c, 'popalni', { pk: z.pk, danni: d, lbl: '✓ Записано · нищо не излиза' });
+  }
+  // „→ Задача“ — съществуващият лист с текста; при запис — „да“ по картата (под същото „Отмени“) [§4.1]
+  function chZad(k) {
+    var x = chFind(k); if (!x) return;
+    var c = x.c, rs = (CH.ed[k + '|reshenie'] || '').trim(), tx = rs || (c.poleta && c.poleta.kandidat) || String(c.zaglavie || '').replace(/^Задача:\s*/, '');
+    openPlus(null, { src: 'chaka', tekst: tx, o: c.obekt === 'ag' || c.obekt === 'soft' ? c.obekt : null, d: c.data || null, izvori: c.izvori || [], chKluch: c.kluch,
+      chMore: [{ tbl: 'chaka_otgovori', row: chRow(c, 'da', { tekst: '→ задача' }) }] });
+  }
+  function chOdOpen(k, ok) {
+    var x = chFind(k); if (!x || !x.dni || !x.dni.length) return;
+    var d = x.dni.slice().sort(function (a, b) { return a.data < b.data ? -1 : 1; })[0], o = x.c.obekt, id = +d.den_id;
+    if (o !== 'ag' && o !== 'soft') { var dd = dniById(id); o = dd ? dd.obekt : null; }
+    if (o !== 'ag' && o !== 'soft') return;
+    if (ok) S.apprNext = id;
+    goDay(o, id, null);
+  }
+  // „Пусни навън · мейл“ → „да“ + листът „✉ Писмо“ с неутралния текст (tekst_navan, не вътрешния на агента) [§6.4]
+  function chMailGo(k, tx) {
+    var x = chFind(k); if (!x) return;
+    var c = x.c, p = c.poleta || {};
+    if (CH.st === 'missing') return;
+    send('chaka_otgovori', chRow(c, 'da', { tekst: tx != null && tx !== String(c.tekst_navan || '') ? tx : null })).catch(function () {});
+    CH.done[k] = 1; delete CH.ed[k + '|navan'];
+    if (view === 'chaka') renderChaka();
+    chMailOpen(c, tx != null ? tx : String(c.tekst_navan || ''), 'iskane');
+  }
+  function chMailTema(c) { var p = c.poleta || {}; return p.tema || ('Въпрос: ' + clip(oneLine(String(c.zaglavie || '')).trim(), 80)); }
+  function chMailOpen(c, tx, vz) {
+    var p = c.poleta || {};
+    openPitai({ o: c.obekt, data: c.data, izv: c.izvori || [], fakt: c.zaglavie, tekst: tx, tema: chMailTema(c),
+      adresati: Array.isArray(p.adresati) && p.adresati.length ? p.adresati : null, zaglavie: '✉ Писмо', vidZapis: vz, chKluch: c.kluch, chKarta: c.id });
+  }
+  // писмото е отворено („да“), но „✓ Пратих го“ не е натиснат (листът е затворен) → пак може: отвори го пак / „✓ Пратих го“ от картата [§6.4]
+  // питането, записано при първото „Отвори в пощата“ (по темата, след „да“) — за да не стане второ в „Искания“ и за адресатите
+  function chMailIsk(x) {
+    var tm = chMailTema(x.c), t0 = chT(x.L) - 300000;
+    return zadRows().filter(function (a) { var d = danniOf(a); return isPitai(a) && d.tema === tm && (Date.parse(d.pitano || a.sazdadeno) || 0) >= t0; })[0] || null;
+  }
+  function chMailRe(k) {
+    var x = chFind(k); if (!x || !x.L || x.L.vid !== 'da') return;
+    var c = x.c, tx = x.L.tekst ? String(x.L.tekst) : String(c.tekst_navan || '');
+    chMailOpen(c, tx, chMailIsk(x) ? 'nishto' : 'iskane');
+  }
+  function chMailPr(k) {
+    var x = chFind(k); if (!x || !x.L || x.L.vid !== 'da') return;
+    var c = x.c, p = c.poleta || {}, isk = chMailIsk(x), di = isk ? danniOf(isk) : {}, ad = [];
+    (Array.isArray(di.adresati) && di.adresati.length ? di.adresati : Array.isArray(p.adresati) ? p.adresati : []).forEach(function (a) {
+      var s = String(a && typeof a === 'object' ? a.adres || '' : a || '').toLowerCase(); if (MAIL_RE.test(s) && ad.indexOf(s) < 0) ad.push(s);
+    });
+    chSend(c, 'pratih', { danni: { kanal: 'mail', adresati: ad, tema: clip(di.tema || chMailTema(c), 300), tekst: clip(x.L.tekst ? String(x.L.tekst) : String(c.tekst_navan || ''), 3500), deistvie_klient_id: null },
+      lbl: '✓ Пратено — в „Какво излезе“', noDone: true });
+  }
+  // „Напомняния“ — готовият текст (§4.8): от картата (tekst_navan / zadachi), иначе от Интранета
+  function chNapZad(g) {
+    var z = Array.isArray(g.zadachi) ? g.zadachi : [];
+    if (!z.length && IZT.rows) z = IZT.rows.filter(function (r) { return r.ot_men && izOver(r) && r.status !== 'Чака одобрение' && r.status !== 'Мониторинг' && skelMatch(r.otgovornik || '', g.ime || ''); })
+      .map(function (r) { return { tid: r.tid, opis: r.opisanie, srok: izSrok(r) }; });
+    return z;
+  }
+  function chNapTxt(g) {
+    if (g.tekst_navan) return String(g.tekst_navan);
+    var z = chNapZad(g);
+    return 'Здравейте,\n\nПо задачите от Интранета, по които сте отговорник и срокът е минал:\n' + z.map(function (r) {
+      var dn = chOkD(r.srok) ? -daysTo(String(r.srok)) : null;
+      return '- #' + r.tid + ' „' + clip(oneLine(r.opis || '').trim(), 80) + '“' + (chOkD(r.srok) ? ' — срок ' + chDm(r.srok) + (dn > 0 ? ' (просрочена ' + dn + ' ' + pl(dn, 'ден', 'дни') + ')' : '') : '');
+    }).join('\n') + '\n\nМоля, обновете ги в Интранета или ми кажете новия срок.\n\nБлагодаря!';
+  }
+  function chNapTema(g) { var n = chNapZad(g).length || +g.broi || 0; return 'Напомняне: ' + (n || '') + (n ? ' ' : '') + pl(n, 'просрочена задача', 'просрочени задачи') + ' в Интранета'; }
+  function chNapAdr(g) {
+    var a = (Array.isArray(g.adresi) ? g.adresi : g.adres ? [g.adres] : []).filter(function (x) { return MAIL_RE.test(String(x)); }).map(function (x) { return { adres: String(x).toLowerCase(), ime: g.ime || null }; });
+    if (!a.length && g.ime && ADR) adrByName(g.ime).filter(function (y) { return !y.fam; }).slice(0, 1).forEach(function (y) { a.push({ adres: y.adres, ime: g.ime }); });
+    return a;
+  }
+  function chNapGo(k, pk, fromList) {
+    var x = chFind(k), c = x ? x.c : null, g = c ? chItems(c).filter(function (y) { return y.podkluch === pk; })[0] : null;
+    if (!g) { var r = (CH.redove || []).filter(function (y) { return y.kluch === k; })[0]; if (!r) return; c = { kluch: r.kluch, id: null, obekt: r.obekt }; g = Object.assign({ podkluch: pk }, chJ(r.poleta) || {}); }
+    adrLoad();
+    if (fromList) CH.backList = true;
+    openPitai({ o: c.obekt, fakt: '', tekst: chNapTxt(g), tema: chNapTema(g), adresati: chNapAdr(g), zaglavie: '✉ Напомни', vidZapis: 'napomni', chKluch: c.kluch, chPk: g.podkluch, chKarta: c.id, napIme: g.ime || null });
+  }
+  function chNapCopy(k, pk) {
+    var x = chFind(k), g = x ? chItems(x.c).filter(function (y) { return y.podkluch === pk; })[0] : null; if (!g) return;
+    copyText('Тема: ' + chNapTema(g) + '\n\n' + chNapTxt(g)).then(function (ok) { toast(ok ? 'Копирано — постави в Outlook.' : 'Не можах да копирам.'); });
+  }
+  function chCopy(k) {
+    var x = chFind(k); if (!x) return;
+    var t = chCopyTx(x); if (!t && x.c.vid === 'pusni') t = String(x.c.tekst_navan || '');
+    if (!t) { var c = x.c; if (c.shablon === 'otgovor') t = chOtgTx({ napraveno: CH.ed[k + '|napraveno'] || c.poleta.napraveno, ostava: CH.ed[k + '|ostava'] || c.poleta.ostava, nov_srok: CH.ed[k + '|nov_srok'] || c.poleta.nov_srok }); }
+    if (!t) { toast('Няма текст за копиране.'); return; }
+    copyText(t).then(function (ok) { toast(ok ? 'Копирано — постави го в Интранета.' : 'Не можах да копирам — задръж върху текста.'); });
+  }
+  function chSrokChip(k, v) {
+    var f = document.querySelector('#chk input[data-chf="nov_srok"][data-k="' + k.replace(/["\\]/g, '') + '"]');
+    var s = +v ? ymd(new Date(nowMs() + (+v) * 864e5)) : '';
+    CH.ed[k + '|nov_srok'] = s; if (f) f.value = s;
+  }
+  // „✓ Пратих го“ в листа „✉“ → pratih → „📤 Какво излезе“ [§6.4]
+  function ptPratih() {
+    var x = PIT; if (!x || x.pratih) return;
+    var v = ptRead(); if (!v) return;
+    var r = { kluch: x.chKluch || ('pitai:' + (x.kid || newQid())), vid: 'pratih', ustroistvo: device() + ' · ✉',
+      danni: { kanal: 'mail', adresati: v.adrs, tema: clip(v.tema, 300), tekst: clip(v.tx, 3500), deistvie_klient_id: x.kid || null } };
+    if (x.chPk) r.podkluch = x.chPk;
+    if (typeof x.chKarta === 'number') r.karta_id = x.chKarta;
+    // картата („Напомняния“ при последния човек, мейлът) остава свита на място, не изчезва под листа [§6.3]
+    if (x.chKluch && (CH.karti || []).some(function (c) { return c.kluch === x.chKluch; })) CH.done[x.chKluch] = 1;
+    x.pratih = true;
+    send('chaka_otgovori', r).then(function () {}, function (e) { x.pratih = false; toast('Не се записа: ' + errBg(e), 'bad'); var b1 = sheetEl && sheetEl.querySelector('[data-a="ptPratih"]'); if (b1) { b1.disabled = false; b1.textContent = '✓ Пратих го'; } });
+    var b = sheetEl && sheetEl.querySelector('[data-a="ptPratih"]'); if (b) { b.disabled = true; b.textContent = '✓ Пратено'; }
+    toast('Записано в „Какво излезе“.');
+    if (view === 'chaka') renderChaka();
+  }
+  // „Защо?“ след ✗ — по желание; само обяснение, не сменя нищо [§4.1]
+  var CH_WHY = ['Не е вярно', 'Вече е направено', 'Не е за мен', 'Дубликат'];
+  function chWhyOpen(k) {
+    CH.why = k; CH.whyV = '';
+    // „Отмени“ на ✗ важи и докато листът е отворен: 5-те секунди стоят на пауза (листът покрива лентата) [§4.1, К22]
+    var uk = 'ch:' + k + '::ne', can = !!UNDO[uk];
+    openSheet('Защо го махаш?', '<p class="small muted">По желание — помага да поправим правилата.</p><div class="chips">' + CH_WHY.map(function (w, i) {
+      return '<button type="button" class="chip" data-a="chWhyChip" data-i="' + i + '" aria-pressed="false">' + esc(w) + '</button>'; }).join('') + '</div>' +
+      '<label class="fld">Друго…<input type="text" id="chWhyT" maxlength="300" autocomplete="off"></label>' +
+      (can ? '<button type="button" class="btn ghost" data-a="chWhyUndo">Отмени — върни картата</button>' : '') +
+      '<div class="sh-save"><button type="button" class="btn big" data-a="chWhySave">Запиши</button></div>', 'chwhy');
+    if (can) { CH.whyU = uk; shuPause(uk); } else CH.whyU = null;
+  }
+  function chWhyUndo() {
+    var uk = CH.whyU; CH.whyU = null; CH.why = null;
+    closeSheet();
+    if (uk && UNDO[uk]) undoCancel(uk); else toast('Вече е записано — картата е в „Готово днес“.');
+  }
+  function chWhyChip(i) {
+    CH.whyV = CH_WHY[+i] || '';
+    Array.prototype.forEach.call(document.querySelectorAll('[data-a="chWhyChip"]'), function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-i') === String(i))); });
+  }
+  function chWhySave() {
+    var k = CH.why, t = (($('#chWhyT') || {}).value || '').trim(), v = t || CH.whyV;
+    if (!v) { toast('Избери причина или затвори.'); return; }
+    var c = (CH.karti || []).filter(function (y) { return y.kluch === k; })[0] || { kluch: k, id: null };
+    closeSheet(); CH.why = null;
+    send('chaka_otgovori', chRow(c, 'zashto', { tekst: v })).then(function () {}, function () {});
+    toast('Записано — благодаря.');
+  }
+  // „Източник ›“ → „Откъде е“: текстът дословно, агентът и часът на бележката, Интранетът, съобщенията [§6.3]
+  function chSrcOpen(k) {
+    var x = chFind(k), c = x ? x.c : (CH.redove || []).filter(function (y) { return y.kluch === k; })[0]; if (!c) return;
+    var bf = chFajl(c.izvor_fajl), izv = c.izvori || [];
+    CH.srcK = k;
+    openSheet('Откъде е', (c.iztochnik ? '<p class="sh-q">' + esc(c.iztochnik) + '</p>' : '') +
+      (c.agent || bf ? '<p class="small">' + esc([AGN[c.agent] || c.agent || '', bf].filter(Boolean).join(' · ')) + '</p>' : '') +
+      (c.vrazka && okZadUrl(c.vrazka) ? zadLink(c.vrazka, 'Отвори в Интранета ›', 'btn ghost') : '') +
+      (izv.length ? '<button type="button" class="btn ghost" data-a="chIzv" data-k="' + esc(k) + '">🗂️ Източниците (' + izv.length + ') ›</button>' : '') +
+      '<p class="small muted">Текстът идва от бележките на агентите и от данните на лаптопа — показва се дословно.</p>', 'chsrc');
+  }
+  function chFajl(f) { var m = /([a-z]+)[\/\\](\d{4})-(\d{2})-(\d{2})_(\d{2})(\d{2})/i.exec(String(f || '')); return m ? 'бележка ' + m[4] + '.' + m[3] + ' ' + m[5] + ':' + m[6] : ''; }
+  function chIzvOpen(k) {
+    var x = chFind(k), c = x ? x.c : (CH.redove || []).filter(function (y) { return y.kluch === k; })[0]; if (!c) return;
+    var p = c.poleta || {}, t = { id: null, tekst: c.zaglavie, izvori: (c.izvori || []).map(function (s, i) { return Object.assign({ n: i + 1 }, s); }) };
+    openSources(t, p.den_id != null ? +p.den_id : null, c.obekt === 'ag' || c.obekt === 'soft' ? c.obekt : null);
+  }
+  function chFoldT(v) { CH.fold[v] = !CH.fold[v]; renderChaka(); }
+
+  // ---------- Табло: един ред най-горе [§6.2] ----------
+  function renderTbChaka() {
+    var el = box('#tb-chaka'); if (!el) return;
+    if (!chakaLive()) { el.innerHTML = ''; return; }
+    var n = chN();
+    el.innerHTML = '<div class="tb-chaka"><button type="button" class="tb-chb" data-a="tab" data-v="chaka">' + (n ? '📬 Чака теб: <b>' + n + '</b> ›' : '✓ Чака теб: 0') + '</button>' +
+      '<button type="button" class="tb-chb" data-a="chList">☀️ Сутрешен лист ›</button></div>';
+  }
+
+  // ---------- сутрешният лист [§4.6, §6.6] ----------
+  function chDelnik(d) { var w = d.getDay(); return w >= 1 && w <= 5; }
+  // свеж = лаптопът е събрал „Чака теб“ днес след 07:00; „Нов брифинг“ — по-нов от видения лист
+  function chListSt() {
+    var sv = svOf('chaka'), n = now(), t = sv ? Date.parse(sv.posledno) : NaN, d7 = new Date(n.getFullYear(), n.getMonth(), n.getDate(), 7, 0, 0, 0).getTime();
+    var fresh = !isNaN(t) && t >= d7 && sameDay(new Date(t), n), seen = null, novBr = '';
+    try { seen = lget(K3.list + ymd(n)); } catch (e) { seen = null; }
+    if (fresh && seen) {
+      var br = chRed('brifing')[0];
+      if (br && (Date.parse(br.obnovena) || 0) > (Date.parse(seen) || 0)) novBr = (chJ(br.poleta) || {}).chas || hmIso(br.spomenata || br.obnovena);
+    }
+    return { fresh: fresh, seen: seen, novBr: novBr, t: t };
+  }
+  function chListAuto() {
+    if (!CH.autoOk || !chakaLive() || PV) return;
+    var n = now(); if (n.getHours() < 7 || !chDelnik(n)) return;
+    var st = chListSt(); if (!st.fresh || st.seen) return;
+    if (sheetEl) { CH.listWait = true; return; }
+    CH.listWait = false; CH.autoOk = false;
+    chListOpen(false);
+  }
+  function chRed(r) {
+    var X = null;
+    return (CH.redove || []).filter(function (x) { return x.razdel === r && x.status !== 'izchezna'; }).sort(function (a, b) { return (Date.parse(b.obnovena) || 0) - (Date.parse(a.obnovena) || 0) || (b.id || 0) - (a.id || 0); });
+  }
+  function chListOpen(back) {
+    var n = now();
+    if (chakaLive() && chListSt().fresh) { try { lset(K3.list + ymd(n), nowIso()); } catch (e) {} }
+    openSheet('☀️ Сутрешен лист · ' + lcDay(ymd(n)), '<div id="chlB" class="chl">' + chListHtml() + '</div>', 'chlist');
+    setTimeout(function () { renderFresh('#chl-fr', true); if (back && sheetEl && sheetEl.firstChild) sheetEl.firstChild.scrollTop = CH.listY || 0; }, 0);
+    izLoad(); chVajniLoad(); adrLoad();
+    if (view === 'chaka') renderChaka();
+  }
+  function chListPaint() {
+    var b = sheetEl && sheetKind === 'chlist' ? sheetEl.querySelector('#chlB') : null; if (!b) return;
+    putH(b, chListHtml());
+    renderFresh('#chl-fr', true);
+  }
+  // до 3 реда на раздел + „Всички (N) ›“
+  function chLs(key, rows, empty) {
+    if (!rows.length) return '<p class="chl-e">' + esc(empty) + '</p>';
+    var all = !!CH.lsAll[key], v = all ? rows : rows.slice(0, 3);
+    return v.join('') + (rows.length > 3 ? '<button type="button" class="lnk chl-all" data-a="chLsAll" data-v="' + key + '">' + (all ? 'По-малко' : 'Всички (' + rows.length + ') ›') + '</button>' : '');
+  }
+  function chListHtml() {
+    var n = now(), st = chListSt(), sv = svOf('chaka'), we = !chDelnik(n), X = chIdx(), s = chakaState(), h = '';
+    if (!chakaLive()) return '<p class="chl-e">' + (CH.st === 'missing' ? '„Чака теб“ още не е в облака — листът ще се появи, щом лаптопът го включи.' : 'Лаптопът още не е събирал „Чака теб“.') + '</p>';
+    h += '<p class="chl-top">📥 Събрано до ' + esc(sv && sv.posledno ? rel(sv.posledno) : '—') + (we ? ' · почивен ден — само най-важното' : '') + '</p>';
+    if (!st.fresh) h += '<p class="warnline">⚠ Листът е от ' + esc(sv && sv.posledno ? rel(sv.posledno) : '—') + ' — лаптопът още не е включен днес.</p>';
+    // ① Интранет — моите задачи днес
+    var d0 = ymd(n), d1 = ymd(new Date(nowMs() + 864e5)), ot = chPoslDelnik07(), r1 = [];
+    if (IZT.rows) {
+      IZT.rows.filter(function (r) {
+        if (!r.na_men || !izOpen(r)) return false;
+        var s0 = izSrok(r);
+        if (izOver(r) || s0 === d0) return true;
+        if (we) return false;
+        return s0 === d1 || (r.vidqna_parvo && Date.parse(r.vidqna_parvo) >= ot);
+      }).sort(function (a, b) { var x = izSrok(a) || '9', y = izSrok(b) || '9'; return x < y ? -1 : x > y ? 1 : 0; }).forEach(function (r) {
+        var s0 = izSrok(r), k0 = s0 ? daysTo(s0) : null;
+        var sr = k0 == null ? 'нова' : k0 < 0 ? 'просрочена ' + (-k0) + ' ' + pl(-k0, 'ден', 'дни') : k0 === 0 ? 'днес' : k0 === 1 ? 'утре' : 'нова · до ' + ddmm(parseD(s0));
+        r1.push('<div class="chl-r"><p><b>#' + esc(r.tid) + '</b> · ' + esc(OBN[r.obekt] || 'друг') + ' · ' + esc(clip(r.opisanie || '', 80)) + ' · <span class="' + (k0 != null && k0 < 0 ? 'amber' : '') + '">' + esc(sr) + '</span> · от ' + esc(izOt(r)) + '</p>' +
+          '<div class="chl-b">' + chB('chIzOtg', '', 'Отговори ›', '', ' data-tid="' + esc(r.tid) + '"') + (okZadUrl(r.link) ? zadLink(r.link, 'Интранет ›', 'ch-b ghost') : '') + '</div></div>');
+      });
+    }
+    var za = zadRows().filter(function (a) { return a.vid === 'za_men' && zadGroup(a) !== 'done' && a.srok && Date.parse(a.srok) < new Date(n.getFullYear(), n.getMonth(), n.getDate() + 1).getTime(); });
+    za.forEach(function (a) { r1.push('<button type="button" class="chl-r lnk-r" data-a="chZadOpen" data-id="' + esc(a.id) + '">📌 ' + esc(clip(a.tekst || '', 90)) + ' · ' + esc(srokLbl(a)) + ' ›</button>'); });
+    var odz = s.akt.filter(function (x) { return x.c.vid === 'odobri_iz'; }).length;
+    h += '<section class="chl-s"><h3>① 🗂️ Интранет — моите задачи днес</h3>' +
+      (IZT.rows || za.length ? chLs('iz', r1, '✓ Нищо на теб за днес и нищо просрочено.') : '<p class="chl-e">' + (IZT.st === 'missing' ? 'Интранетът още не е в облака.' : '<span class="pulse" aria-hidden="true"></span> зареждам задачите…') + '</p>') +
+      (odz ? '<button type="button" class="chl-r lnk-r" data-a="chGo">Чакат твоето одобрение в Интранета (' + odz + ') ›</button>' : '') +
+      '<p class="chl-n">Известието за задачите идва от агента „Интранет“ (делник ~08:24).</p></section>';
+    if (!we) {
+      // ② Чакат твоя отговор
+      var r2 = chRed('chakat_men').filter(function (r) { var L = chLast(X.k[r.kluch], null); return !(L && (L.vid === 'otgovoreno' || L.vid === 'pratih')); }).map(function (r) {
+        return '<div class="chl-r"><p>' + esc(r.zaglavie) + '</p><div class="chl-b">' + chB('chOtgv', r.kluch, '✉ Отговори') + chB('chOtgvd', r.kluch, '✓ Отговорено', 'ghost') + '</div></div>';
+      });
+      h += '<section class="chl-s"><h3>② ✉️ Чакат твоя отговор (' + r2.length + ')</h3>' + (r2.length ? chLs('otg', r2, '') : '<p class="chl-e">Няма — или не виждам отговора ти (<button type="button" class="lnk chl-all" data-a="chLsHow">виж как се смята ›</button>).</p>') +
+        (CH.lsHow || r2.length ? '<p class="chl-n">Тиймс чатове — точно; канали и поща — приблизително. Ако си отговорил — натисни „✓ Отговорено“.</p>' : '') + '</section>';
+      // ③ Чакаш от други
+      var hora = chRed('chakam').filter(function (r) { var p = chJ(r.poleta) || {}; return !chNapDone({ podkluch: 'napomni:' + skel(p.ime || ''), ime: p.ime }, X); });
+      var M = 0, r3 = hora.map(function (r) {
+        var p = chJ(r.poleta) || {}; M += +p.broi || 0;
+        var nk = chNapKarta(p.ime);
+        return '<div class="chl-r"><p>' + esc(r.zaglavie) + '</p><div class="chl-b">' + chB('chNapR', nk ? nk.kluch : r.kluch, '✉ Напомни', '', ' data-pk="' + esc('napomni:' + skel(p.ime || '')) + '"') + '</div></div>';
+      });
+      zadRows().filter(function (a) { return isPitai(a) && (a.status === 'zaqveno' || a.status === 'chaka_otgovor') && !a._err; }).forEach(function (a) {
+        var d = danniOf(a), pt = d.pitano || a.sazdadeno;
+        r3.push('<button type="button" class="chl-r lnk-r" data-a="chZadOpen" data-id="' + esc(a.id) + '">✉ ' + esc(a.chovek || '') + ' · „' + esc(clip(d.tema || a.tekst || '', 70)) + '“ · питано ' + esc(pt ? ddmm(new Date(pt)) : '—') + ' ›</button>');
+      });
+      h += '<section class="chl-s"><h3>③ ⏳ Чакаш от други (' + hora.length + ' ' + pl(hora.length, 'човек', 'души') + ' · ' + M + ' ' + pl(M, 'просрочена', 'просрочени') + ')</h3>' + chLs('chakam', r3, '✓ Никой не ти дължи просрочена задача.') + '</section>';
+    }
+    // ④ Ново важно
+    var br = chRed('brifing')[0], r4 = [], nv = chRed('novo'), imena = {};
+    nv.forEach(function (r) { var L = chLast(X.k[r.kluch], null); imena[String(r.zaglavie || '').toLowerCase()] = 1; if (we && (+r.vajnost || 1) < 3) return;
+      r4.push(chNovoRow(r.kluch, r.obekt, r.zaglavie, r.tekst, L)); });
+    if (!we) (CH.vajni || []).forEach(function (d) {
+      var ime = String(dokIme(d)).toLowerCase(); if (Object.keys(imena).some(function (z) { return z.indexOf(ime) >= 0; })) return;
+      var kk = 'dok:' + d.id; r4.push(chNovoRow(kk, d.obekt, dokIme(d), d.kratko || d.tema || '', chLast(X.k[kk], null)));
+    });
+    var sl = chRed('sledq'), tm = chRed('temi')[0];
+    h += '<section class="chl-s"><h3>④ 🆕 Ново важно (' + r4.length + ')</h3>';
+    if (br) {
+      var bp = chJ(br.poleta) || {}, brT = String(br.tekst || ''), bAll = !!CH.lsAll.br, bN = s.akt.filter(function (x) { return x.c.agent === 'brifing'; }).length;
+      var bch = bp.chas || hmIso(br.spomenata || br.obnovena);
+      h += '<div class="chl-br"><p class="chl-bh">Накратко (брифинг ' + esc(bch) + ')</p><p class="chl-bt' + (bAll ? '' : ' cl2') + '">' + esc(brT) + '</p>' +
+        (brT.length > 140 ? '<button type="button" class="lnk chl-all" data-a="chLsAll" data-v="br">' + (bAll ? 'по-малко' : 'още ›') + '</button>' : '') +
+        (bp.izbroqva != null ? '<p class="chl-n">' + esc('Брифингът ' + bch + ' изброява ' + bp.izbroqva + ' в „Чакат теб“ — тук са ' + (bp.tuk != null ? bp.tuk : bN) + '; отговорените са махнати.') + '</p>' : '') + '</div>';
+    }
+    h += chLs('novo', r4, 'Нищо ново важно от вчера.');
+    if (sl.length && !we) {
+      var on = !!CH.lsAll.sledq;
+      h += '<button type="button" class="chl-r lnk-r" data-a="chLsAll" data-v="sledq">Сигнали (' + sl.length + ') ' + (on ? '▾' : '›') + '</button>';
+      if (on) h += sl.map(function (r) {
+        var kt = (X.k[r.kluch] || []).some(function (a) { return a.vid === 'karta'; });
+        return '<div class="chl-r"><p><span class="small muted">' + esc(OBN[r.obekt] || '') + (r.agent ? ' · ' + esc(AGN[r.agent] || r.agent) : '') + '</span><br>' + esc(r.zaglavie) + '</p><div class="chl-b">' +
+          (kt ? '<span class="small muted">→ в „Чака теб“</span>' : chB('chKarta', r.kluch, '→ Карта')) + '</div></div>';
+      }).join('');
+    }
+    if (tm && !we) { var tp = chJ(tm.poleta) || {}; h += '<p class="chl-n">Теми за оперативката: ' + esc(tp.broi != null ? tp.broi : String(tm.zaglavie || '').replace(/\D+/g, '')) + ' (агент „Теми“' + (tp.generirano ? ', ' + esc(rel(tp.generirano)) : '') + ') — за дневен ред кажи на Claude на лаптопа „дневен ред“.</p>'; }
+    h += '</section>';
+    // ⑤ Свежест и времето
+    var vr = chRed('vreme'), pf = chRed('pdf')[0];
+    h += '<section class="chl-s"><h3>⑤ 🌡️ Свежест и времето</h3><div id="chl-fr"></div>' +
+      vr.map(function (r) { return '<p class="chl-v">' + esc((OBEKT[r.obekt] ? OBN[r.obekt] + ': ' : '') + (r.zaglavie || '')) + '</p>'; }).join('') +
+      (pf ? '<p class="chl-n">' + esc(pf.zaglavie || '') + (pf.tekst ? '<br>' + esc(pf.tekst) : '') + '</p>' + (pf.vrazka && okOd(pf.vrazka) ? extA(pf.vrazka, 'btn ghost', 'Отвори БРИФИНГ.pdf ›', 'od') : '') : '') + '</section>';
+    h += '<button type="button" class="btn big" data-a="chGo">Към „Чака теб“ (' + s.N + ') ›</button>';
+    return h;
+  }
+  // „нови от последния делник 07:00“ (за ①)
+  function chPoslDelnik07() { var d = now(); d.setHours(7, 0, 0, 0); do { d.setDate(d.getDate() - 1); } while (!chDelnik(d)); return d.getTime(); }
+  function chNovoRow(k, o, ime, tx, L) {
+    var dn = L && L.vid === 'izbor';
+    return '<div class="chl-r"><p>' + esc(OBN[o] || '') + ' · <b>' + esc(clip(ime || '', 90)) + '</b>' + (tx ? ' · ' + esc(clip(tx, 140)) : '') + '</p>' +
+      (dn ? '<p class="ch-itok">✓ запомнено' + (String(L.tekst) === 'svedenie' ? ' — само за сведение' : ' — важно') + '</p>' :
+        '<div class="chl-b">' + chB('chVajno', k, '✓ Важно', '', ' data-v="vajno" data-o="' + esc(o || '') + '"') + chB('chVajno', k, '✗ Само за сведение', 'ghost', ' data-v="svedenie" data-o="' + esc(o || '') + '"') + '</div>') + '</div>';
+  }
+  function chNapKarta(ime) {
+    var pk = 'napomni:' + skel(ime || '');
+    return (CH.karti || []).filter(function (c) { return c.vid === 'napomni' && c.status === 'aktivna' && (c.grupa || []).some(function (g) { return g && g.podkluch === pk; }); })[0] || null;
+  }
+  function chRedSend(k, vid, o) {
+    var r = (CH.redove || []).filter(function (y) { return y.kluch === k; })[0] || { kluch: k, id: null };
+    if (CH.st === 'missing') return;
+    o = o || {}; o.noDone = true; o.lbl = o.lbl || 'Записано';
+    chSend(r, vid, o);
+    chListPaint();
+  }
+  // ② „✉ Отговори“ — „Re: тема“, до подателя, без запис в „Искания“ [§4.12]
+  function chOtgv(k) {
+    var r = (CH.redove || []).filter(function (y) { return y.kluch === k; })[0]; if (!r) return;
+    var p = chJ(r.poleta) || {}, ad = p.adres && MAIL_RE.test(p.adres) ? [{ adres: String(p.adres).toLowerCase(), ime: p.avtor || null }] : null;
+    CH.backList = sheetKind === 'chlist';
+    openPitai({ o: r.obekt, fakt: r.zaglavie, tekst: 'Здравейте,\n\n', tema: 'Re: ' + String(p.tema || '').replace(/^\s*((re|fw|fwd|aw|tr|отг|отн)\s*:\s*)+/i, ''), adresati: ad, izv: r.izvori || [],
+      zaglavie: '✉ Отговори', vidZapis: 'otgovor', chKluch: r.kluch });
+  }
+
+  // ---------- „📤 Изходящо“ и „📬 Чака теб“ в Настройки [§6.7] ----------
+  function chIzhodHtml() {
+    var sp = chSpran(), no = CH.st === 'missing', nl = (chLogRows() || []).length;
+    return '<p class="nas-r2">' + (sp.spran ? '⛔ Изходящото е спряно от теб' + (sp.ot ? ' на ' + esc(dm(sp.ot)) : '') + ' — четенето продължава.' : 'Нищо не излиза автоматично — писането в Интранета и в пощата идва в Стъпка 5.') + '</p>' +
+      (no ? '<p class="small muted">Превключвателят ще работи, щом „Чака теб“ е в облака (лаптопът).</p>' :
+        '<button type="button" class="btn' + (sp.spran ? '' : ' ghost') + '" data-a="chIzhodSw">' + (sp.spran ? 'Пусни изходящото пак' : 'Спри всичко изходящо') + '</button>') +
+      '<button type="button" class="btn ghost" data-a="chIzhod">Какво излезе' + (CH.log ? ' (' + nl + ')' : '') + ' ›</button>' +
+      '<p class="small muted">Спирането важи за всичко, което AiLab би пратил сам (Интранет, чернови в Outlook). Писмата, които отваряш с „✉“, ги пращаш ти.</p>';
+  }
+  function chIzhodSw() {
+    if (CH.st === 'missing') return;
+    var sp = chSpran(), v = sp.spran ? 'pusni_izhod' : 'spri_izhod';
+    undoStart({ key: 'ch:izhod', kind: 'ch', lbl: v === 'spri_izhod' ? '⛔ Спряно' : 'Пуснато пак', tbl: 'chaka_otgovori', row: { kluch: 'izhod', vid: v, ustroistvo: device() },
+      done: function () { if (view === 'nastroiki') renderNastroiki(); loadChaka(true); } });
+    if (view === 'nastroiki') renderNastroiki();
+  }
+  function chPratihNeobr() {
+    var vl = {}; (CH.log || []).forEach(function (l) { if (l.otgovor_id != null) vl[l.otgovor_id] = 1; });
+    var X = chIdx(), out = [];
+    Object.keys(X.k).forEach(function (k) { X.k[k].forEach(function (r) { if (r.vid === 'pratih' && !r.obraboteno && !vl[r.id]) out.push(r); }); });
+    return out;
+  }
+  // седмицата: отговорени · ✗ (най-честото „защо“) · изпуснати · в 23:30 по дни; над 30 % ✗ за един вид → ред с ⚠ [§6.7]
+  function chNsHtml() {
+    if (CH.st === 'missing') return '<p class="small muted">„Чака теб“ още не е в облака (лаптопът).</p>';
+    if (!CH.karti) return '<p class="small muted"><span class="pulse" aria-hidden="true"></span> зареждам…</p>';
+    var lim = nowMs() - 7 * 864e5, X = chIdx(), by = {}, otg = 0, ne = 0, zs = {}, vid = {};
+    (CH.karti || []).forEach(function (c) { by[c.kluch] = c; });
+    Object.keys(X.k).forEach(function (k) {
+      X.k[k].forEach(function (r) {
+        if (chT(r) < lim) return;
+        var c = by[r.kluch], vk = c ? chVidLbl(c, null) : '';
+        if (r.vid === 'zashto' && r.tekst) zs[r.tekst] = (zs[r.tekst] || 0) + 1;
+        if (!CH_GOT[r.vid] || r.vid === 'otgovoreno' || r.vid === 'pratih') return;
+        if (vk) { vid[vk] = vid[vk] || { n: 0, ne: 0 }; vid[vk].n++; }
+        if (r.vid === 'ne') { ne++; if (vk) vid[vk].ne++; } else otg++;
+      });
+    });
+    var izp = (CH.karti || []).filter(function (c) { return c.status === 'izpusnata' && (Date.parse(c.obnovena) || 0) >= lim; }).length;
+    var top = Object.keys(zs).sort(function (a, b) { return zs[b] - zs[a]; })[0];
+    var m = {}, dd = [], d = now();
+    (CH.m2330 || []).forEach(function (r) { var t = new Date(r.kogda); if (!isNaN(t)) m[ymd(t)] = r.stoinost; });
+    for (var i = 0; dd.length < 5 && i < 12; i++) { var x = new Date(d.getFullYear(), d.getMonth(), d.getDate() - i); if (chDelnik(x)) dd.unshift(m[ymd(x)] != null ? String(m[ymd(x)]) : '—'); }
+    var warn = Object.keys(vid).filter(function (k) { return vid[k].n >= 3 && vid[k].ne / vid[k].n > 0.3; });
+    var rules = chPravila();
+    return '<p class="nas-r2">📬 Чака теб — седмицата: отговорени ' + otg + ' · ✗ ' + ne + (top ? ' (най-често „' + esc(top) + '“)' : '') + ' · изпуснати ' + izp + ' · в 23:30: ' + esc(dd.join(' · ')) + '</p>' +
+      warn.map(function (k) { return '<p class="nas-r2 amber">⚠ Над 30 % ✗ за „' + esc(k) + '“ — кажи защо, за да го поправя.</p>'; }).join('') +
+      '<p class="small muted">„—“ = не е мерено (лаптопът не е бил включен между 23:30 и 23:59).</p>' +
+      '<button type="button" class="btn ghost" data-a="chRules"' + (rules.length ? '' : ' disabled') + '>Научени правила (' + rules.length + ') ›</button>';
+  }
+  function chM2330Load() {
+    if (!api || offNow() || (!DEMO && (!db || !user)) || Date.now() - CH.m2330At < 300000) return;
+    CH.m2330At = Date.now();
+    api.chaka2330(isoMinus(12 * 864e5)).then(function (r) { CH.m2330 = r || []; if (view === 'nastroiki') renderNastroiki(); }, function () { CH.m2330 = []; });
+  }
+  // научените правила: „Да спра ли да показвам новото от <папка>?“ → „Да“, без по-късно „Махни“ (varni по pravilo:<папка>) [§5.3 т.7]
+  function chPravila() {
+    var X = chIdx(), out = [], seen = {}, kl = {};
+    // картите (poleta.papka) и отговорите по ключа izb:papka:<папка> — и когато картата вече е извън 7-те дни
+    (CH.karti || []).forEach(function (c) { var p = c.poleta || {}; if (c.vid === 'izberi' && p.papka) kl[c.kluch] = p.papka; });
+    Object.keys(X.k).forEach(function (k) { if (/^izb:papka:/.test(k) && !kl[k]) kl[k] = k.slice(10); });
+    Object.keys(kl).forEach(function (k) {
+      var papka = kl[k], L = chLast(X.k[k], null); if (!L || L.vid !== 'izbor' || String(L.tekst) !== 'da' || seen[papka]) return;
+      var M = chLast(X.k['pravilo:' + papka], null); if (M && M.vid === 'varni' && chT(M) > chT(L)) return;
+      seen[papka] = 1; out.push({ papka: papka, ot: L.kogda });
+    });
+    return out;
+  }
+  function chRulesOpen() {
+    var r = chPravila();
+    openSheet('Научени правила (' + r.length + ')', (r.length ? r.map(function (x, i) {
+      return '<div class="chl-r"><p>Не показвам новото от <b>' + esc(x.papka) + '</b><br><span class="small muted">от ' + esc(dm(x.ot)) + '</span></p><div class="chl-b">' + chB('chRuleX', 'pravilo:' + x.papka, 'Махни', 'ghost', ' data-i="' + i + '"') + '</div></div>';
+    }).join('') : '<p class="grp-e">Няма.</p>') + '<p class="small muted">„Махни“ — новото от папката пак се показва в сутрешния лист.</p>', 'chrules');
+  }
+  function chRuleX(k) {
+    send('chaka_otgovori', { kluch: k, vid: 'varni', ustroistvo: device() }).then(function () {}, function () {});
+    toast('Махнато — новото оттам пак ще се показва.');
+    setTimeout(function () { if (sheetKind === 'chrules') chRulesOpen(); if (view === 'nastroiki') renderNastroiki(); }, 50);
+  }
+  // „📤 Какво излезе“ — izhod_log (най-новото горе) + още необработените „✓ Пратих го“ [§4.10]
+  function chIzhodOpen() {
+    CH.logOpen = {};
+    openSheet('📤 Какво излезе', '<div id="chLogB">' + chLogHtml() + '</div>', 'chlog');
+    chLogLoad(true); loadChaka(true);
+  }
+  function chLogLoad(force) {
+    if (CH.st === 'missing' || offNow() || !api || (!DEMO && (!db || !user)) || (!force && Date.now() - CH.logAt < 300000) || Date.now() - CH.logAt < 15000) return;
+    CH.logSt = 'load'; CH.logAt = Date.now();
+    api.izhodLog().then(function (r) { CH.log = r || []; CH.logSt = 'ok'; chLogPaint(); }, function (e) { CH.logSt = isMissing(e) ? 'missing' : 'err'; CH.logErr = e; chLogPaint(); });
+  }
+  function chLogPaint() { var b = sheetEl && sheetKind === 'chlog' ? sheetEl.querySelector('#chLogB') : null; if (b) putH(b, chLogHtml()); if (view === 'nastroiki') renderNastroiki(); }
+  function chLogRows() {
+    if (CH.st === 'missing' || CH.logSt === 'missing') return null;
+    var rows = (CH.log || []).map(function (l) { return { kogda: l.kogda, kanal: l.kanal, do: l.do_kogo, tema: l.tema, tekst: l.tekst, nachin: l.nachin }; });
+    // още необработените „✓ Пратих го“ — без онези, които лаптопът вече е вписал (същата карта, ± 3 мин)
+    chPratihNeobr().forEach(function (r) {
+      var d = chJ(r.danni) || {}, t0 = chT(r);
+      if ((CH.log || []).some(function (l) { return l.karta_kluch === r.kluch && Math.abs((Date.parse(l.kogda) || 0) - t0) < 180000; })) return;
+      rows.push({ kogda: r.kogda, kanal: d.kanal || 'mail', do: (d.adresati || []).join('; '), tema: d.tema, tekst: d.tekst, nachin: 'rp_sam', nov: true });
+    });
+    rows.sort(function (a, b) { return (Date.parse(b.kogda) || 0) - (Date.parse(a.kogda) || 0); });
+    return rows;
+  }
+  function chLogHtml() {
+    var rows = chLogRows();
+    if (!rows) return '<p class="grp-e">„Какво излезе“ още не е в облака (лаптопът).</p>';
+    if (!rows.length) return CH.logSt === 'load' ? '<p class="small muted"><span class="pulse" aria-hidden="true"></span> зареждам…</p>' :
+      '<p class="chl-e">Още нищо не е излизало от AiLab. Писането в Интранета и в пощата идва в Стъпка 5; писмата, които пращаш сам през „✉“, се записват тук, щом натиснеш „✓ Пратих го“.</p>';
+    return rows.map(function (r, i) {
+      var d = new Date(r.kogda), on = !!CH.logOpen[i];
+      return '<button type="button" class="chl-r lnk-r chlog" data-a="chLogR" data-i="' + i + '" aria-expanded="' + on + '"><span>' + esc(isNaN(d) ? '—' : DNI_K[d.getDay()].toLowerCase() + ' ' + ddmm(d) + ' ' + hhmm(d)) + ' · ' +
+        (r.kanal === 'mail' ? '✉ мейл' : r.kanal === 'outlook_chernova' ? '✉ чернова' : '🗂️ Интранет') + (r.do ? ' · до ' + esc(clip(r.do, 80)) : '') + (r.tema ? ' · „' + esc(clip(r.tema, 80)) + '“' : '') +
+        ' · ' + (r.nachin === 'rp_sam' ? 'пратено от теб' : 'пратено от AiLab') + (r.nov ? ' · ⏳ чака лаптопа' : '') + '</span>' + (on && r.tekst ? '<span class="chlog-t">' + esc(r.tekst) + '</span>' : '') + '</button>';
+    }).join('');
+  }
+
+  // ---------- „👥 Хора и фирми“ [§4.11, §6.8] ----------
+  var FREE_MAIL = ['gmail.com', 'abv.bg', 'mail.bg', 'yahoo.com', 'outlook.com', 'hotmail.com', 'dir.bg', 'live.com', 'icloud.com', 'gbg.bg', 'yandex.ru', 'mail.ru'].concat(DEMO ? ['poshta.test'] : []);
+  function chHoraLoad(force) {
+    if (CH.horaSt === 'load' || (!force && CH.hora && Date.now() - CH.horaAt < 300000)) return;
+    if (offNow() || !api || (!DEMO && (!db || !user))) { if (!CH.hora) CH.horaSt = 'net'; return; }
+    CH.horaSt = 'load';
+    api.hora().then(function (r) { CH.hora = r || []; CH.horaSt = 'ok'; CH.horaAt = Date.now(); chHoraPaint(); }, function (e) { CH.horaSt = isMissing(e) ? 'missing' : isNet(e) ? 'net' : 'err'; CH.horaErr = e; chHoraPaint(); });
+  }
+  // сливане: един човек = еднакъв скелет на името (или едното се съдържа в другото) или еднакъв адрес
+  function chHoraSlej() {
+    var G = [];
+    (CH.hora || []).forEach(function (r) {
+      var ime = String(r.ime || '').trim(), ad = String(r.adres || '').trim().toLowerCase(), sk = skel(ime);
+      var g = G.filter(function (x) { return (ad && x.adr[ad]) || (sk && (x.sk[sk] || Object.keys(x.sk).some(function (y) { return skelMatch(y, sk) && Math.min(y.split(' ').length, sk.split(' ').length) >= 2; }))); })[0];
+      if (!g) { g = { imena: [], adr: {}, sk: {}, firma: '', grupa: '', iz: false, otv: 0, prosr: 0, broi: 0, posl: '', ag: 0 }; G.push(g); }
+      if (ime && g.imena.indexOf(ime) < 0) { if (r.izvor === 'intranet') g.imena.unshift(ime); else g.imena.push(ime); }
+      if (sk) g.sk[sk] = 1;
+      if (ad) { g.adr[ad] = 1; var dom = ad.split('@')[1] || ''; if (dom && FREE_MAIL.indexOf(dom) < 0 && !g.firma) g.firma = dom; }
+      if (r.izvor === 'intranet') { g.iz = true; if (r.grupa) g.grupa = r.grupa; }
+      if (r.izvor === 'zadachi') { g.otv += +r.otv_ot_men || 0; g.prosr += +r.prosr_ot_men || 0; }
+      if (r.izvor === 'poshta') { g.broi += +r.broi || 0; if (r.posledno && String(r.posledno) > g.posl) g.posl = String(r.posledno); }
+      if (r.izvor === 'agenti') g.ag += +r.broi || 0;
+    });
+    G.forEach(function (g) { if (!g.firma && g.grupa) g.firma = g.grupa; });
+    return G.sort(function (a, b) { return (b.prosr - a.prosr) || (b.otv - a.otv) || (b.broi - a.broi) || String(a.imena[0] || '').localeCompare(String(b.imena[0] || '')); });
+  }
+  function chHoraOpen() {
+    chHoraLoad(); adrLoad(); izInit();
+    openSheet('👥 Хора и фирми', '<input type="search" id="hfQ" class="ch-q" placeholder="Търси по име, фирма или адрес" autocomplete="off" aria-label="Търси в хората" value="' + esc(CH.horaQ) + '">' +
+      '<div id="hfB" class="chl">' + chHoraHtml() + '</div>', 'chhora');
+  }
+  function chHoraPaint() { var b = sheetEl && sheetKind === 'chhora' ? sheetEl.querySelector('#hfB') : null; if (b) putH(b, chHoraHtml()); }
+  function chHoraHtml() {
+    if (!CH.hora) return CH.horaSt === 'missing' ? '<p class="grp-e">Списъкът с хора още не е в облака.</p>' : CH.horaSt === 'net' ? '<p class="grp-e">📴 Когато има покритие.</p>' :
+      CH.horaSt === 'err' ? '<div class="err">Не се зареди: ' + esc(errBg(CH.horaErr)) + '</div>' : '<p class="small muted"><span class="pulse" aria-hidden="true"></span> зареждам…</p>';
+    var q = skel(CH.horaQ), ql = String(CH.horaQ || '').trim().toLowerCase(), G = chHoraSlej();
+    CH.horaG = G;
+    var l = G.map(function (g, i) { return { g: g, i: i }; }).filter(function (x) {
+      if (!ql) return true;
+      var g = x.g, s = skel(g.imena.join(' ') + ' ' + g.firma + ' ' + g.grupa);
+      return (q && s.indexOf(q) >= 0) || Object.keys(g.adr).some(function (a) { return a.indexOf(ql) >= 0; }) || String(g.firma).toLowerCase().indexOf(ql) >= 0;
+    });
+    if (!l.length) return '<p class="grp-e">Няма такъв.</p>';
+    return '<p class="small muted">' + l.length + ' ' + pl(l.length, 'човек', 'души') + '</p>' + l.slice(0, 120).map(function (x) {
+      var g = x.g, ads = Object.keys(g.adr), nm = g.imena[0] || ads[0] || '—';
+      return '<div class="chl-r hf"><p><b>' + esc(nm) + '</b>' + (g.firma ? ' · ' + esc(g.firma) : '') + (ads[0] && ads[0] !== nm ? ' · <span class="mono">' + esc(ads[0]) + '</span>' : '') +
+        (g.imena.length > 1 ? '<br><span class="small muted">и като: ' + esc(g.imena.slice(1).join(', ')) + '</span>' : '') + '</p>' +
+        '<p class="small">' + [g.iz ? 'Интранет ✓' : '', g.otv ? 'от теб: ' + g.otv + ' ' + pl(g.otv, 'отворена', 'отворени') + (g.prosr ? ' (' + g.prosr + ' ' + pl(g.prosr, 'просрочена', 'просрочени') + ')' : '') : '',
+          g.broi ? 'в пощата: ' + g.broi + ' ' + pl(g.broi, 'писмо', 'писма') + (g.posl ? ', последно ' + ddmm(new Date(g.posl)) : '') : '', g.ag ? 'от агентите: ' + g.ag : ''].filter(Boolean).map(esc).join(' · ') + '</p>' +
+        '<div class="chl-b">' + (ads[0] ? '<button type="button" class="ch-b" data-a="chHoraMail" data-i="' + x.i + '" aria-label="' + esc('Писмо до ' + nm) + '">✉</button>' : '') +
+        (g.otv || g.iz ? '<button type="button" class="ch-b ghost" data-a="chHoraZad" data-i="' + x.i + '">Задачите му ›</button>' : '') + '</div></div>';
+    }).join('');
+  }
+  function chHoraMail(i) {
+    var g = (CH.horaG || [])[+i]; if (!g) return;
+    var a = Object.keys(g.adr)[0]; if (!a) return;
+    openPitai({ fakt: '', tekst: '', tema: '', adresati: [{ adres: a, ime: g.imena[0] || null }], zaglavie: '✉ Писмо', vidZapis: 'nishto' });
+  }
+  function chHoraZad(i) {
+    var g = (CH.horaG || [])[+i]; if (!g) return;
+    IZT.chovek = g.imena[0] || null; IZT.f = 'ot_men'; IZT.o = 'all';
+    lset(K5.izg, 'intranet'); closeSheet(); izLoad(); go('deistviq', { force: true });
+  }
+
+  // ---------- „📄 Документи“ — целият регистър с филтри [§6.8] ----------
+  var DOK_F = [['all', 'Всички'], ['nov', 'Непрочетени'], ['ne_moje', 'Не може'], ['vajen', 'Важни'], ['ag', 'Амур'], ['soft', 'Скай']];
+  var DOK_PILL = { nov: 'p-warn', otlojen: 'p-neutral', ne_moje: 'p-warn', samo_ime: 'p-neutral', prochet: 'p-ok' };
+  function dokVseOpen() {
+    if (!DOK.vse && !DOK.vseBusy && !offNow() && api && (DEMO || (db && user))) {
+      DOK.vseBusy = true;
+      allPages(function (rg) { return api.dokVse(rg); }).then(function (r) { DOK.vseBusy = false; DOK.vse = r || []; DOK.vseSt = 'ok'; dokVsePaint(); },
+        function (e) { DOK.vseBusy = false; DOK.vseSt = isMissing(e) || isNoCol(e) ? 'missing' : isNet(e) ? 'net' : 'err'; DOK.vseErr = e; dokVsePaint(); });
+    }
+    openSheet('📄 Документи', '<input type="search" id="dvQ" class="ch-q" placeholder="Търси по име на файла" autocomplete="off" aria-label="Търси в документите" value="' + esc(CH.dokQ) + '">' +
+      '<div class="chips dv-f" id="dvF">' + dokFHtml() + '</div><div id="dvB" class="dok-l">' + dokVseHtml() + '</div>', 'dokv');
+  }
+  function dokFHtml() { return DOK_F.map(function (f) { return '<button type="button" class="chip sm' + (f[0] === 'ag' || f[0] === 'soft' ? ' o-' + f[0] : '') + '" data-a="dokF" data-v="' + f[0] + '" aria-pressed="' + (CH.dokF === f[0]) + '">' + f[1] + '</button>'; }).join(''); }
+  function dokVsePaint() {
+    if (!sheetEl || sheetKind !== 'dokv') return;
+    var b = sheetEl.querySelector('#dvB'), f = sheetEl.querySelector('#dvF');
+    if (b) putH(b, dokVseHtml()); if (f) putH(f, dokFHtml());
+  }
+  function dokVseHtml() {
+    if (!DOK.vse) return dokMsg(DOK.vseBusy ? '' : DOK.vseSt || (offNow() ? 'net' : ''), DOK.vseErr);
+    var f = CH.dokF, q = String(CH.dokQ || '').trim().toLowerCase();
+    var l = DOK.vse.filter(function (r) {
+      if (f === 'nov' && r.status !== 'nov' && r.status !== 'otlojen') return false;
+      if (f === 'ne_moje' && r.status !== 'ne_moje') return false;
+      if (f === 'vajen' && !r.vajen) return false;
+      if ((f === 'ag' || f === 'soft') && r.obekt !== f) return false;
+      return !q || String(dokIme(r)).toLowerCase().indexOf(q) >= 0;
+    });
+    if (!l.length) return '<p class="grp-e">Няма.</p>';
+    return '<p class="small muted">' + l.length + ' ' + pl(l.length, 'файл', 'файла') + '</p>' + l.slice(0, 200).map(function (r) {
+      var o = OBN[r.obekt] || 'Общо', mt = [r.podatel, r.tema ? '„' + r.tema + '“' : ''].filter(Boolean).join(' ');
+      return '<div class="dok-r"><div class="dok-h">' + esc(dvDat(r.data, true) + ' · ' + o + ' · 📄 ' + dokIme(r)) + ' <span class="pill ' + (DOK_PILL[r.status] || 'p-neutral') + '">' + esc(DOK_ST[r.status] || r.status) + '</span>' +
+        (r.vajen ? ' <span class="pill p-warn">важен</span>' : '') + '</div>' + (mt ? '<div class="small muted">' + esc(mt) + '</div>' : '') +
+        (r.kratko || r.prichina ? '<div class="small">' + esc(r.kratko || r.prichina) + '</div>' : '') + (okOd(r.url) ? '<div class="dok-a">' + extA(r.url, 'btn ghost sb', 'Отвори ›', 'od') + '</div>' : '') + '</div>';
+    }).join('') + (l.length > 200 ? '<p class="small muted">Показани са първите 200 — търси по име.</p>' : '');
+  }
+  // важните документи от вчера насам — за ④ „Ново важно“
+  function chVajniLoad() {
+    if (CH.vajniSt === 'load' || Date.now() - CH.vajniAt < 300000 || offNow() || !api || (!DEMO && (!db || !user))) return;
+    CH.vajniSt = 'load'; CH.vajniAt = Date.now();
+    api.dokVajni(ymd(new Date(nowMs() - 864e5))).then(function (r) { CH.vajni = r || []; CH.vajniSt = 'ok'; if (sheetKind === 'chlist') chListPaint(); }, function () { CH.vajni = []; CH.vajniSt = 'err'; });
+  }
+
   // ---------- таб „Настройки“ — само на този телефон; нищо не пише в базата [§10, К7] ----------
   var NS = { mq: null, mqAt: 0, mqErr: null, busy: false };
   function showNastroiki() {
@@ -6890,6 +8347,7 @@
     spisaciLoad(false);
     if (Date.now() - NS.mqAt > 36e5) mqLoad();
     dokAllLoad(); merLoad();   // 1а [§6.8, §6.9]: регистърът на приложенията и минутите — само при отваряне на Настройки
+    loadChaka(); chM2330Load(); chLogLoad();   // 3 [§6.7]: „📤 Изходящо“, седмицата на „Чака теб“, научените правила
   }
   function mqLoad() {
     if (NS.busy || offNow() || (!DEMO && (!db || !user))) return;
@@ -6935,10 +8393,13 @@
     h += nsCard('Свежест на източниците', '', freshHtml() +
       '<div class="nas-r2">Задачите: лаптопът ги обработи последно ' + (az ? '<b>' + esc(rel(az)) + '</b>' : '<span class="muted">— (още не)</span>') + '</div>' +
       '<div class="nas-r2' + (spOld ? ' amber' : '') + '">Списъкът с хора от Интранета: ' + (sp ? 'от <b>' + esc(rel(sp)) + '</b>' + (spOld ? ' — по-стар от 30 дни' : '') : '<span class="muted">' + (SPL.st === 'missing' ? 'още не е качен (лаптопът)' : 'още не е зареден') + '</span>') + '</div>');
-    h += nsCard('📎 Приложенията (от ' + dvDat(DOK_OT, true) + ')', '', dokAllHtml());   // 1а [§6.8]
+    h += nsCard('📤 Изходящо', '', chIzhodHtml() + chNsHtml());   // 3 [§6.7]: + седмицата на „Чака теб“, научените правила
+    h += nsCard('👥 Хора и фирми', '', '<p class="small muted">Хората от пощата, от Интранета и отговорниците от агентите — на едно място, с фирмата и задачите им от теб.</p>' +
+      '<button type="button" class="btn ghost" data-a="chHora">👥 Хора и фирми ›</button>');   // 3 [§6.8]
+    h += nsCard('📄 Документи (приложенията от ' + dvDat(DOK_OT, true) + ')', '', dokAllHtml());   // 1а [§6.8]; 3 [§6.8]: „Всички ›“
     h += nsCard('Място за снимки', '', mqHtml());
     h += nsCard('⏱ Колко време отива в AiLab', '', merHtml());   // 1а [§6.9]
-    h += nsCard('Версия и данни', '', '<ul class="nas-v"><li>AiLab · Стъпка 1а (19.10) · кеш ailab-1a-v1</li><li>Данни към ' + esc(TB.at ? rel(TB.at) : '—') + '</li><li>Чакат връзка: ' + pendingCount() + '</li>' +
+    h += nsCard('Версия и данни', '', '<ul class="nas-v"><li>AiLab · Стъпка 3 (19.10) · кеш ailab-s3-v1</li><li>Данни към ' + esc(TB.at ? rel(TB.at) : '—') + '</li><li>Чакат връзка: ' + pendingCount() + '</li>' +
       '<li>' + (isStandalone() ? 'Инсталирано като иконка ✓' : 'Съвет: в Safari натисни <b>Сподели ⬆</b> → <b>Добави към началния екран</b>.') + '</li></ul>');
     h += nsCard('Още', '', '<div class="nas-b">' + (DEMO ? '' : '<button class="btn ghost" type="button" data-a="karti">🔎 Карти и търсене (Етап 0)</button>') + (DEMO ? demoPanel() : '') +
       (DEMO ? '<a class="btn ghost" href="./">Изход от демото</a>' : '<button class="btn ghost" type="button" data-a="logout">Изход</button>') + '</div>');
@@ -6959,7 +8420,7 @@
   document.addEventListener('click', function (e) {
     var el = e.target && e.target.closest ? e.target.closest('[data-a]') : null;
     if (!el || el.disabled) return;
-    var a = el.getAttribute('data-a'), tid = +el.getAttribute('data-tid') || null, pk = el.getAttribute('data-pk');
+    var a = el.getAttribute('data-a'), tid = +el.getAttribute('data-tid') || null, pk = el.getAttribute('data-pk'), sk0 = sheetKind;
     if (S.seenPend && view === 'day' && S.den && S.den.id === S.seenPend && a !== 'tab') { var sp0 = S.seenPend; S.seenPend = null; send('metriki', { vid: 'pregled_otvoren', stoinost: 1, den_id: sp0 }).catch(function () {}); }
     switch (a) {
       case 'scrim': if (e.target === el) closeSheet(); break;
@@ -7147,12 +8608,93 @@
       case 'pvPrev': pvStep(-1); break;
       case 'pvNext': pvStep(1); break;
       case 'pvClose': closeViewer(); break;
+      // Стъпка 3 — „Чака теб“, сутрешният лист, „Какво излезе“, „Изходящо“, „Хора и фирми“, „Документи“
+      case 'chList': chListOpen(false); break;
+      case 'chGo': closeSheet(); CH.backList = false; go('chaka'); break;
+      case 'chOk': chOk(el.getAttribute('data-k')); break;
+      case 'chNe': chNe(el.getAttribute('data-k')); break;
+      case 'chOtl': { var ok0 = el.getAttribute('data-k'); CH.open[ok0] = 'otl'; renderChaka(); } break;
+      case 'chOtlX': delete CH.open[el.getAttribute('data-k')]; renderChaka(); break;
+      case 'chOtlGo': chOtlGo(el.getAttribute('data-k'), el.getAttribute('data-v')); break;
+      case 'chEd': chEd(el.getAttribute('data-k')); break;
+      case 'chEdX': chEdX(el.getAttribute('data-k')); break;
+      case 'chEdOk': chEdOk(el.getAttribute('data-k')); break;
+      case 'chPrvSave': chPrvSave(el.getAttribute('data-k')); break;
+      case 'chIzb': chIzb(el.getAttribute('data-k'), el.getAttribute('data-v')); break;
+      case 'chItOk': chItOk(el.getAttribute('data-k'), el.getAttribute('data-pk')); break;
+      case 'chZad': chZad(el.getAttribute('data-k')); break;
+      case 'chMail': chMailGo(el.getAttribute('data-k')); break;
+      case 'chNap': chNapGo(el.getAttribute('data-k'), el.getAttribute('data-pk')); break;
+      case 'chNapR': chNapGo(el.getAttribute('data-k'), el.getAttribute('data-pk'), sheetKind === 'chlist'); break;
+      case 'chNapCopy': chNapCopy(el.getAttribute('data-k'), el.getAttribute('data-pk')); break;
+      case 'chCopy': chCopy(el.getAttribute('data-k')); break;
+      case 'chSrc': chSrcOpen(el.getAttribute('data-k')); break;
+      case 'chIzv': chIzvOpen(el.getAttribute('data-k')); break;
+      case 'chFold': chFoldT(el.getAttribute('data-v')); break;
+      case 'chVarni': chVarni(el.getAttribute('data-k')); break;
+      case 'chMore': { var mk0 = el.getAttribute('data-k'); CH.more[mk0] = !CH.more[mk0]; renderChaka(); } break;
+      case 'chOdOpen': chOdOpen(el.getAttribute('data-k'), false); break;
+      case 'chOdOk': chOdOpen(el.getAttribute('data-k'), true); break;
+      case 'chIz': chIzOpen(el.getAttribute('data-k'), el.getAttribute('data-pk')); break;
+      case 'chIzBtn': chIzBtn(el.getAttribute('data-k'), el.getAttribute('data-v'), el.getAttribute('data-pk')); break;
+      case 'chIzVse': chIzVse(el.getAttribute('data-k')); break;
+      case 'chIzSave': chIzSave(); break;
+      case 'chIzCopy': chIzCopy(el.getAttribute('data-k'), el.getAttribute('data-pk')); break;
+      case 'chMailRe': chMailRe(el.getAttribute('data-k')); break;
+      case 'chMailPr': chMailPr(el.getAttribute('data-k')); break;
+      case 'chWhyUndo': chWhyUndo(); break;
+      case 'chOtgSave': chOtgSave(el.getAttribute('data-k')); break;
+      case 'chSrok': chSrokChip(el.getAttribute('data-k'), el.getAttribute('data-v')); break;
+      case 'chFill': CH.open[el.getAttribute('data-k')] = 'fill'; renderChaka(); break;
+      case 'chWhy': chWhyOpen(el.getAttribute('data-k')); break;
+      case 'chWhyChip': chWhyChip(el.getAttribute('data-i')); break;
+      case 'chWhySave': chWhySave(); break;
+      case 'chIzhodSw': chIzhodSw(); break;
+      case 'chIzhod': chIzhodOpen(); break;
+      case 'chLogR': { var li = el.getAttribute('data-i'); CH.logOpen[li] = !CH.logOpen[li]; chLogPaint(); } break;
+      case 'chRules': chRulesOpen(); break;
+      case 'chRuleX': chRuleX(el.getAttribute('data-k')); break;
+      case 'chHora': chHoraOpen(); break;
+      case 'chHoraMail': chHoraMail(el.getAttribute('data-i')); break;
+      case 'chHoraZad': chHoraZad(el.getAttribute('data-i')); break;
+      case 'dokVse': dokVseOpen(); break;
+      case 'dokF': CH.dokF = el.getAttribute('data-v') || 'all'; dokVsePaint(); break;
+      case 'chOtgv': chOtgv(el.getAttribute('data-k')); break;
+      case 'chOtgvd': chRedSend(el.getAttribute('data-k'), 'otgovoreno', { lbl: '✓ Отговорено' }); break;
+      case 'chVajno': chRedSend(el.getAttribute('data-k'), 'izbor', { tekst: el.getAttribute('data-v'), lbl: el.getAttribute('data-v') === 'vajno' ? '✓ Важно' : '✗ Само за сведение' }); break;
+      case 'chKarta': chRedSend(el.getAttribute('data-k'), 'karta', { lbl: '→ Картата е в „Чака теб“' }); break;
+      case 'chLsAll': { var lv = el.getAttribute('data-v'); CH.lsAll[lv] = !CH.lsAll[lv]; chListPaint(); } break;
+      case 'chLsHow': CH.lsHow = !CH.lsHow; chListPaint(); break;
+      case 'chIzOtg': {   // ① „Отговори ›“ → „Чака теб“ и картата светва
+        var it0 = +el.getAttribute('data-tid'), cs = chakaState(), ck0 = null;
+        cs.akt.forEach(function (x) { if (ck0) return; var c0 = x.c; if (+c0.tid === it0 || (c0.kluch === 'iz:spisak' && (c0.grupa || []).some(function (g) { return +g.tid === it0; }))) ck0 = c0.kluch; });
+        closeSheet(); CH.backList = false; CH.flash = ck0; go('chaka', { force: true });
+        if (!ck0) toast('Няма карта за #' + it0 + ' — отвори я в Интранета.');
+      } break;
+      case 'chZadOpen': CH.backList = sheetKind === 'chlist'; openZad(el.getAttribute('data-id')); break;
+      case 'prdDa': chPrdGo(tid, true); break;
+      case 'prdNe2': chPrdGo(tid, false); break;
+      case 'ptPratih': ptPratih(); break;
+      case 'izChX': IZT.chovek = null; renderActsTab(); break;
+      case 'dS3List': closeSheet(); ldel(K3.list + ymd(now())); CH.autoOk = true; chListOpen(false); break;
+      case 'dS3Star': demoS3Star(el); break;
+      case 'dS3Novi': closeSheet(); demoS3Novi(); break;
+      case 'dS3Pet': closeSheet(); demoS3Pet(); break;
+      case 'dS3Den': closeSheet(); demoS3Den(); break;
+      case 'dS3Izhod': demoS3Izhod(el); break;
+      case 'dS3No': demoS3No(el); break;
     }
+    // 3: бутоните на Табло в карта на „Чака теб“ (✓ Отговорено / ✎ / → Задача) — картата се свива на място
+    if (view === 'chaka' && (a === 'tOk' || a === 'tFix' || a === 'tAct') && el.getAttribute('data-k')) { CH.done[el.getAttribute('data-k')] = 1; if (tid) CH.itNow[tid] = 1; renderChaka(); }
+    if (sk0 === 'chlist' && a === 'fresh') CH.backList = true;
   });
   // полетата на формите → P.f без пречертаване (фокусът и клавиатурата остават)
   document.addEventListener('input', function (e) {
     var t = e.target; if (!t || !t.getAttribute) return;
     if (t.getAttribute('data-f')) formInput(t);
+    else if (t.getAttribute('data-chf')) CH.ed[t.getAttribute('data-k') + '|' + t.getAttribute('data-chf')] = t.value;   // 3: полетата на картите — в паметта
+    else if (t.id === 'hfQ') { CH.horaQ = t.value; chHoraPaint(); }
+    else if (t.id === 'dvQ') { CH.dokQ = t.value; dokVsePaint(); }
     else if (t.getAttribute('data-pks')) pkResults(t.getAttribute('data-pks'));
     else if (t.id === 'pyT') pyCount();
     else if ((t.id === 'pfD' || t.id === 'pfH') && P && P.f) fromInputs();
@@ -7161,7 +8703,13 @@
     var t = e.target; if (!t || !t.getAttribute) return;
     if ((t.id === 'pfD' || t.id === 'pfH') && P && P.f) fromInputs();
     else if (t.getAttribute('data-f')) formInput(t);
+    else if (t.getAttribute('data-chf')) CH.ed[t.getAttribute('data-k') + '|' + t.getAttribute('data-chf')] = t.value;
     else if (t.getAttribute('data-ch') === 'feedOt') feedOtSet(t.value);
+  });
+  // 3: поле на карта в „Чака теб“ загуби фокуса → отложеното пречертаване (ако е имало) — сега
+  document.addEventListener('focusout', function (e) {
+    var t = e.target; if (!t || !t.getAttribute || !t.getAttribute('data-chf')) return;
+    setTimeout(function () { if (CH.redo && view === 'chaka' && !chTyping() && !PDOWN) renderChaka(); }, 450);
   });
   // лист с форма на iPhone: фокусираното поле — във видимото над клавиатурата [К31]; търсенето показва резултати при фокус
   document.addEventListener('focusin', function (e) {
@@ -7221,6 +8769,10 @@
     if (view === 'day') { poll(true); if (S.den && !offNow() && Date.now() - PH.at > PH_C1_MS) phLoad(S.den.id); }   // [К30]
     else if (view === 'tablo' && stale60(TB.okAt)) { TB.seenBase = seenRead() || TB.seenBase; loadTablo(); }
     else if (view === 'deistviq' && stale60(S.actsOkAt)) loadActs();
+    else if (view === 'chaka' && stale60(CH.at)) loadChaka(true);
+    // 3 [§6.6]: върнато приложение — сутрешният лист, ако е делник след 07:00, лаптопът е събрал днес и още не е показан
+    CH.autoOk = true;
+    if (view !== 'chaka' && stale60(CH.at)) loadChaka(true); else chListAuto();
   });
   window.addEventListener('pagehide', function () { commitUndos(); if (view === 'tablo') seenWrite(); sesFlush(); });
   var scT = 0;
@@ -7297,6 +8849,9 @@
     SLED = {}; DOK = { den: {}, all: null, allSt: '', allAt: 0, allErr: null, lst: {} }; ZAK = {}; VI.skrit = {}; WAS = {};
     MER.rows = null; MER.st = ''; MER.at = 0; MER.start = null; MER.startSt = ''; MER.zatv = {};
     try { Object.keys(localStorage).filter(function (k) { return /^ailab-izvan-/.test(k); }).forEach(function (k) { localStorage.removeItem(k); }); } catch (e) {}
+    // Стъпка 3 [§6.10]: кешът на „Чака теб“, ключовете „листът е видян“ и паметта (картите, отговорите, хората, документите)
+    try { localStorage.removeItem(K3.chaka); Object.keys(localStorage).filter(function (k) { return /^ailab-list-|^ailab-s3-/.test(k); }).forEach(function (k) { localStorage.removeItem(k); }); } catch (e) {}
+    chReset();
     phReset();   // подписаните адреси, кешът с миниатюрите ailab-snimki-v1 и прегледът
   }
 
@@ -7416,6 +8971,15 @@
       '<button type="button" class="btn ghost" data-a="dCikalTece" aria-pressed="' + !!(D && D.cikal === 'tece') + '">' + demo1aLbl('tece') + '</button>' +
       '<button type="button" class="btn ghost" data-a="dIzvan">⏱ Карта „извън AiLab“ (и извън часа)</button>' +
       '<button type="button" class="btn ghost" data-a="dDokNo" aria-pressed="' + !!(D && D.dokNo) + '">' + demo1aLbl('dok') + '</button>' +
+      // Стъпка 3 [§6.9]: сутрешният лист, старият лист, нови карти от лаптопа, таванът 12, „мини един ден“, изходящото, без 011
+      '<div class="demo-h">Стъпка 3</div>' +
+      '<button type="button" class="btn ghost" data-a="dS3List">☀️ Сутрешен лист наново</button>' +
+      '<button type="button" class="btn ghost" data-a="dS3Star" aria-pressed="' + !!(D && D.s3Star) + '">☀️ Листът е стар — ' + (D && D.s3Star ? 'вкл.' : 'изкл.') + '</button>' +
+      '<button type="button" class="btn ghost" data-a="dS3Novi">📥 Лаптопът качва нови карти</button>' +
+      '<button type="button" class="btn ghost" data-a="dS3Pet">🔢 Още 5 карти</button>' +
+      '<button type="button" class="btn ghost" data-a="dS3Den">⏰ Мини един ден</button>' +
+      '<button type="button" class="btn ghost" data-a="dS3Izhod">⛔ Изходящо спряно/пуснато (от друг телефон)</button>' +
+      '<button type="button" class="btn ghost" data-a="dS3No" aria-pressed="' + !!(D && D.s3No) + '">🚫 Без 011 — ' + (D && D.s3No ? 'вкл.' : 'изкл.') + '</button>' +
       '<button type="button" class="btn ghost" data-a="dReset">Започни демото отначало</button></div>';
   }
   function demoPanel() {
@@ -7464,7 +9028,7 @@
     // Етап 6: лаптопът — пазачът пише на 2 мин (минута преди „сега“); демо панелът: „💻 Лаптопът спи“ (17:02), „Тиймс от вчера“ (09:05)
     svezhest: function () {
       return later(function () {
-        return D.svezhest.map(function (s) {
+        return D.svezhest.filter(function (s) { return !(s.izvor === 'chaka' && D.s3No); }).map(function (s) {   // 3: „🚫 Без 011“ — без реда chaka
           var r = pick(s, 'izvor,posledno,ok,broi,belejka');
           if (s.izvor === 'laptop') r.posledno = D.spi ? dT('2026-09-24T17:02:00+03:00') : new Date(nowMs() - 60000).toISOString();
           if (s.izvor === 'teams' && D.teamsV) r.posledno = dT('2026-09-23T09:05:00+03:00');
@@ -7674,14 +9238,85 @@
           .sort(function (a, b) { return b.broi - a.broi; }).slice(0, 1000);
       });
     },
-    tZap: function (ids) { return later(function () { return D.dni.filter(function (d) { return ids.indexOf(d.id) >= 0; }).slice(0, 10).map(function (d) { return pick(d, 'id,zapis_md'); }); }); }
+    tZap: function (ids) { return later(function () { return D.dni.filter(function (d) { return ids.indexOf(d.id) >= 0; }).slice(0, 10).map(function (d) { return pick(d, 'id,zapis_md'); }); }); },
+    // ---- Стъпка 3 — като истинските (011_stapka3.sql); „🚫 Без 011“ (демо панел) → 42P01 ----
+    chaka: function () {
+      return later(function () {
+        demoS3No011();
+        var ot7 = nowMs() - 7 * 864e5, ot2 = nowMs() - 2 * 864e5;
+        var k = D.chaka_karti.filter(function (c) { return c.vid !== 'red' && (c.status === 'aktivna' || c.status === 'svita' || Date.parse(c.obnovena) >= ot7); })
+          .sort(function (a, b) { return b.prioritet - a.prioritet || a.id - b.id; }).slice(0, 400).map(function (c) { return pick(c, CHK_COLS); });
+        var r = D.chaka_karti.filter(function (c) { return c.vid === 'red' && Date.parse(c.obnovena) >= ot2; }).slice(0, 300).map(function (c) { return pick(c, CHK_COLS); });
+        return { karti: k, redove: r };
+      });
+    },
+    chakaOtg: function () {
+      return later(function () { demoS3No011(); var ot = nowMs() - 35 * 864e5; return D.chaka_otgovori.filter(function (r) { return Date.parse(r.kogda) >= ot; }).sort(function (a, b) { return Date.parse(a.kogda) - Date.parse(b.kogda) || a.id - b.id; }).map(function (r) { return pick(r, CHO_COLS); }); });
+    },
+    izhodSt: function () {
+      return later(function () {
+        demoS3No011();
+        var l = D.chaka_otgovori.filter(function (r) { return r.vid === 'spri_izhod' || r.vid === 'pusni_izhod'; });
+        if (!l.length) return { spran: false, ot: null, ustroistvo: null };
+        var pi = l.slice().sort(function (a, b) { return b.id - a.id; })[0], pk = l.slice().sort(function (a, b) { return Date.parse(b.kogda) - Date.parse(a.kogda) || b.id - a.id; })[0];
+        var sp = pi.vid === 'spri_izhod' || pk.vid === 'spri_izhod';
+        return { spran: sp, ot: sp ? (pi.vid === 'spri_izhod' ? pi.kogda : pk.kogda) : (Date.parse(pi.kogda) > Date.parse(pk.kogda) ? pi.kogda : pk.kogda), ustroistvo: pi.ustroistvo };
+      });
+    },
+    izhodLog: function () { return later(function () { demoS3No011(); return D.izhod_log.slice().sort(function (a, b) { return Date.parse(b.kogda) - Date.parse(a.kogda); }).slice(0, 100); }); },
+    // като изгледа hora_firmi: пощата (адресникът) + хората от Интранета + отговорниците „от мен“ (без РП) + агентите
+    hora: function () {
+      return later(function () {
+        demoS3No011();
+        var out = [], adr = {}, lim = ymd(now());
+        D.saobshteniq.forEach(function (s) { if (s.vid === 'mail' && /@/.test(s.avtor || '')) { var a = String(s.avtor).toLowerCase(), x = adr[a] || (adr[a] = { izvor: 'poshta', ime: null, adres: a, firma: a.split('@')[1], grupa: null, broi: 0, posledno: null }); x.broi++; if (!x.posledno || s.vreme > x.posledno) x.posledno = s.vreme; } });
+        Object.keys(adr).forEach(function (a) { out.push(adr[a]); });
+        (D.hora_extra || []).forEach(function (r) { out.push(r); });
+        D.intranet_spisaci.filter(function (r) { return r.vid === 'chovek' && !r.skrit && r.aktiven !== false; }).forEach(function (r) { out.push({ izvor: 'intranet', ime: r.ime, adres: null, firma: null, grupa: r.grupa || null }); });
+        var z = {};
+        (D.intranet_zadachi || []).forEach(function (r) {
+          if (r.v_spisaka === false || !r.ot_men || r.na_men || !r.otgovornik) return;
+          var x = z[r.otgovornik] || (z[r.otgovornik] = { izvor: 'zadachi', ime: r.otgovornik, adres: null, firma: null, grupa: null, broi: 0, posledno: null, posledno_srok: null, otv_ot_men: 0, prosr_ot_men: 0 });
+          x.broi++; if (r.srok && (!x.posledno_srok || r.srok > x.posledno_srok)) x.posledno_srok = r.srok;
+          if (r.status !== 'Завършена') { x.otv_ot_men++; if (r.srok && r.srok < lim) x.prosr_ot_men++; }
+        });
+        Object.keys(z).forEach(function (k) { out.push(z[k]); });
+        var ag = {};
+        D.chaka_karti.forEach(function (c) { String(c.otgovornik || '').split(/[\/,]/).forEach(function (n) { n = n.trim(); if (!n) return; var x = ag[n] || (ag[n] = { izvor: 'agenti', ime: n, adres: null, firma: null, grupa: null, broi: 0, posledno: null }); x.broi++; }); });
+        Object.keys(ag).forEach(function (k) { out.push(ag[k]); });
+        return out.slice(0, 2000);
+      });
+    },
+    dokVse: function (rg) {
+      return later(function () {
+        if (D.dokNo) throw { code: '42P01', message: 'relation "public.dokumenti" does not exist' };
+        return D.dokumenti.filter(function (r) { return r.data >= DOK_OT; }).sort(function (a, b) { return a.data < b.data ? 1 : a.data > b.data ? -1 : a.id - b.id; }).slice(rg[0], rg[1] + 1).map(function (r) { return pick(r, DOK_COLS + ',obekt,data'); });
+      });
+    },
+    dokVajni: function (ot) {
+      return later(function () { if (D.dokNo) throw { code: '42P01', message: 'relation "public.dokumenti" does not exist' }; return D.dokumenti.filter(function (r) { return r.vajen && r.data >= ot; }).slice(0, 40).map(function (r) { return pick(r, DOK_COLS + ',obekt,data'); }); });
+    },
+    chaka2330: function (ot) { return later(function () { return D.metriki.filter(function (r) { return r.vid === 'chaka_2330' && r.kogda >= ot; }).map(function (r) { return pick(r, 'stoinost,kogda'); }); }); }
   };
+  function demoS3No011() { if (D.s3No) throw { code: '42P01', message: 'relation "public.chaka_karti" does not exist' }; }
   function dSaobSort(a, b) { return a.vreme < b.vreme ? -1 : a.vreme > b.vreme ? 1 : a.id - b.id; }
   // като истинската база: външните ключове се проверяват (23503), klient_id е уникален (23505), часът от телефона се пази
   function demoFk(tbl, col, v, ref) {
     return { code: '23503', message: 'insert or update on table "' + tbl + '" violates foreign key constraint "' + tbl + '_' + col + '_fkey"', details: 'Key (' + col + ')=(' + v + ') is not present in table "' + ref + '".' };
   }
   function demoInsert(tbl, row) {
+    // Стъпка 3: като 011 — без таблицата (демо „🚫 Без 011“) 42P01; klient_id уникален; kogda не по-късно от сега + 10 мин
+    if (tbl === 'chaka_otgovori') {
+      demoS3No011();
+      if (row.klient_id && D.chaka_otgovori.some(function (x) { return x.klient_id === row.klient_id; }))
+        throw { code: '23505', message: 'duplicate key value violates unique constraint "chaka_otgovori_klient_id_key"', details: 'Key (klient_id)=(' + row.klient_id + ') already exists.' };
+      if (row.kogda && Date.parse(row.kogda) > nowMs() + 600000) throw { code: '23514', message: 'new row for relation "chaka_otgovori" violates check constraint "chaka_otgovori_kogda_check"' };
+      if ((row.vid === 'spri_izhod' || row.vid === 'pusni_izhod') && row.kluch !== 'izhod') throw { code: '23514', message: 'new row for relation "chaka_otgovori" violates check constraint "chaka_otgovori_izhod_check"' };
+      var co = Object.assign({ id: ++D.seq, kogda: nowIso(), obraboteno: null, rezultat: null, podkluch: null, tekst: null, danni: null, karta_id: null }, row);
+      D.chaka_otgovori.push(co);
+      if (!D.lt) D.lt = setTimeout(function () { D.lt = 0; demoLaptop(); }, 6000);
+      return co;
+    }
     var T = tbl === 'resheniq' ? D.resheniq : tbl === 'deistviq' ? D.deistviq : tbl === 'deistviq_bel' ? D.deistviq_bel : null;
     if (T && row.klient_id && T.some(function (x) { return x.klient_id === row.klient_id; }))
       throw { code: '23505', message: 'duplicate key value violates unique constraint "' + tbl + '_klient_id_key"', details: 'Key (klient_id)=(' + row.klient_id + ') already exists.' };
@@ -7735,6 +9370,29 @@
         else { if (tt) tt.istina = 'provereno'; r.rezultat = tt ? 'потвърдено' : 'точката я няма в текущата версия'; }
       } else { r.rezultat = 'чака Claude'; return; }   // като ailab-rabotnik: поправките и разясненията остават необработени за Claude
       r.obraboteno = t;
+    });
+    demoChakaLaptop();
+  }
+  // Стъпка 3 — като ailab-chaka.ps1 (§5.3 т.7): отбелязва отговорите (rezultat, obraboteno), затваря отговорените карти,
+  // „✓ Пратих го“ → ред в „Какво излезе“ (rp_sam). Изпуснатите/свитите — по часовника на демото.
+  function demoChakaLaptop() {
+    if (!D || !D.chaka_otgovori) return;
+    var t = nowIso(), by = {};
+    D.chaka_karti.forEach(function (c) { by[c.kluch] = c; });
+    D.chaka_otgovori.filter(function (r) { return !r.obraboteno; }).forEach(function (r) {
+      var c = by[r.kluch];
+      r.obraboteno = t;
+      if (r.vid === 'spri_izhod' || r.vid === 'pusni_izhod' || r.vid === 'zashto' || r.vid === 'karta') return;
+      if (r.vid === 'pratih') {
+        var d = r.danni || {};
+        D.izhod_log.push({ id: ++D.seq, kogda: r.kogda, kanal: d.kanal || 'mail', nachin: 'rp_sam', obekt: c ? c.obekt : null, do_kogo: (d.adresati || []).join('; '), tema: d.tema || null, tekst: d.tekst || null,
+          vrazka: null, karta_kluch: r.kluch, otgovor_id: r.id, deistvie_id: null, rezultat: 'пратено от теб' });
+        r.rezultat = 'пратено от теб — в „Какво излезе“';
+      } else if (!c) r.rezultat = 'картата я няма';
+      else if (c.vid === 'proveri' && r.vid === 'ne') r.rezultat = 'поправката отиде в сутрешния цикъл';
+      else if (r.vid === 'izbor') r.rezultat = 'изборът е запомнен';
+      else r.rezultat = 'записано';
+      if (c && CH_GOT[r.vid] && !r.podkluch && c.status === 'aktivna') { c.status = 'zatvorena'; c.obnovena = t; }
     });
   }
   // Като ailab-zadachi.ps1 в режим ПРОБА (§9.3.2), в твърдия ред [К3]: отмени/готово → замени → преходи в AiLab → Интранет последен.
@@ -8141,6 +9799,7 @@
     demoE5(k23);
     demoE6(dDayOf('ag', '2026-09-24'), dDayOf('soft', '2026-09-24'));
     demoE1a(dDayOf('ag', '2026-09-24'), d23, dDayOf('ag', '2026-09-22'));
+    demoS3();
   }
   // ---- Стъпка 1а (§6.11): „събрано до“, версиите по k, „↳“, закъснелите, времето, приложенията, мерилото — всичко измислено ----
   // Амур 24.09 (v3, обновяване „от 22:45“ — демото не спазва вечерния час), Амур 23.09 (одобрен с „добави утре“), Амур 22.09 (k 5 за „↳“).
@@ -8248,6 +9907,207 @@
       var kg = T(x[0] + 'T12:00:00+03:00');
       [['intranet', x[1]], ['poshta', x[2]], ['dokladi', x[3]]].forEach(function (z) { if (z[1] != null) D.metriki.push({ id: ++D.seq, vid: 'izvan_' + z[0] + '_min', stoinost: z[1], den_id: null, kogda: kg }); });
     });
+  }
+  // ---- Стъпка 3 (§6.9): „Чака теб“ — всички видове карти и състояния, редовете на сутрешния лист, отговорите — всичко измислено ----
+  // Имената са роли („Техн. ръководител (демо)“), „Demo …“, адресите — *@primer.test (и *@poshta.test — „безплатна поща“ в демото).
+  var DS3 = { TR: 'Техн. ръководител (демо)', MEH: 'Механизатор (демо)', BK: 'Бригадир кофраж (демо)' };
+  function demoS3() {
+    var T = dT, H = '2026-09-24T', Z = '+03:00';
+    var ag24 = dDayOf('ag', '2026-09-24'), ag22 = dDayOf('ag', '2026-09-22'), sk23 = dDayOf('soft', '2026-09-23'), sk24 = dDayOf('soft', '2026-09-24');
+    D.chaka_karti = []; D.chaka_otgovori = []; D.izhod_log = []; D.s3No = false; D.s3Star = false; D.s3n = 0;
+    function P(d, k) { return d ? D.tochki.filter(function (t) { return t.den_id === d.id && t.k === k; })[0] || null : null; }
+    function C(o) {
+      var c = Object.assign({ id: ++D.seq, kluch: '', vid: 'popalni', kanal: null, shablon: null, razdel: null, obekt: 'ag', zaglavie: '', tekst: null, tekst_navan: null, izbori: null, poleta: null,
+        grupa: null, izvori: null, iztochnik: null, vrazka: null, tid: null, agent: 'brifing', izvor_fajl: 'brifing/2026-09-24_0854.json', otgovornik: null, data: '2026-09-24', vajnost: 2, prioritet: 50,
+        izticha: null, spomenata: T(H + '08:54:00' + Z), versiq: 1, status: 'aktivna', hesh: null, sazdadena: T(H + '08:56:00' + Z), obnovena: T(H + '08:56:00' + Z) }, o);
+      D.chaka_karti.push(c); return c;
+    }
+    function R(razdel, o) { return C(Object.assign({ vid: 'red', razdel: razdel, prioritet: 0, obekt: 'obshto', agent: null, izvor_fajl: null }, o)); }
+    function O(o) { var r = Object.assign({ id: ++D.seq, karta_id: null, podkluch: null, tekst: null, danni: null, ustroistvo: 'iPhone · иконка · чака теб', klient_id: null, obraboteno: null, rezultat: null }, o); D.chaka_otgovori.push(r); return r; }
+    // Скай 18.09 (цветът на панелите) — отговорено в Табло → не е карта (точка с отговор = няма карта) [Р8]
+    var s18 = dResOf('soft', '2026-09-18');
+    if (s18) D.resheniq.push({ id: ++D.seq, den_id: s18.den_id, tochka_id: s18.id, vid: 'komentar', tekst: 'Цветът — по мострата; чакаме писмото на архитекта.', versiq: 1, hesh: null, ustroistvo: 'iPhone · иконка · табло',
+      kogda: T('2026-09-19T08:40:00' + Z), obraboteno: T('2026-09-19T09:00:00' + Z), rezultat: 'прието' });
+    // ---- от дневника и Интранета (лаптопът ги смята от базата) ----
+    C({ kluch: 'iz:spisak', shablon: 'otgovor', obekt: 'obshto', agent: 'intranet_db', izvor_fajl: null, prioritet: 100, vajnost: 3, zaglavie: 'Интранет: 4 задачи на теб чакат отговор',
+      iztochnik: 'Интранет · „Моите задачи“ 16:02 · попълнено от дневника и от агентите', grupa: [
+        { podkluch: 'iz:6990:2026-09-22', tid: 6990, obekt: 'ag', data: '2026-09-22', tekst: 'Подпиши протокола за приемане на армировката на стълбището', napraveno: 'Надзорът прие армировката на стълбището на 18.09 — протоколът е подписан от тях.',
+          ostava: 'Твоят подпис и сканиране', nov_srok: '2026-09-25', iztochnici: 'дневник Амур 18.09 · „армировката на стълбището е приета“', vrazka: '#demo-intranet-6990' },
+        { podkluch: 'iz:7010:2026-09-25', tid: 7010, obekt: 'ag', data: '2026-09-25', tekst: 'Прегледай количествената сметка за поредния акт по кофража', bez_danni: true, vrazka: '#demo-intranet-7010' },
+        { podkluch: 'iz:7028:2026-09-24', tid: 7028, obekt: 'ag', data: '2026-09-24', tekst: 'Протокол от оперативката — коментарите към ТР (демо)', napraveno: 'Коментарите са събрани в протокола (Оперативки 13:05).',
+          ostava: 'Да се пратят на ТР', iztochnici: 'Оперативки 24.09 13:05', vrazka: '#demo-intranet-7028' },
+        { podkluch: 'iz:7029:2026-09-19', tid: 7029, obekt: 'soft', data: '2026-09-19', tekst: 'Справка за отпадъците — септември (демо)', bez_danni: true, vrazka: '#demo-intranet-7029' }] });
+    if (ag24) C({ kluch: 'odobri:ag', vid: 'odobri', obekt: 'ag', agent: 'dnevnik', izvor_fajl: null, prioritet: 90, zaglavie: 'Одобри деня · Амур', poleta: { dni: [
+      { den_id: ag24.id, data: ag24.data, versiq: ag24.versiq, sabrano: '17:02', za_reshenie: 2, za_pregled: 6, nesigurni: 3 }] } });
+    if (sk23 && sk24) C({ kluch: 'odobri:soft', vid: 'odobri', obekt: 'soft', agent: 'dnevnik', izvor_fajl: null, prioritet: 90, data: '2026-09-23', zaglavie: 'Одобри 2 дни · Скай', poleta: { dni: [
+      { den_id: sk23.id, data: sk23.data, versiq: sk23.versiq, sabrano: '22:47', za_reshenie: 1, za_pregled: 4, nesigurni: 1 },
+      { den_id: sk24.id, data: sk24.data, versiq: sk24.versiq, sabrano: '17:05', za_reshenie: 0, za_pregled: 3, nesigurni: 0 }] } });
+    C({ kluch: 'odobri_iz:7012', vid: 'odobri_iz', obekt: 'soft', agent: 'intranet_db', izvor_fajl: null, prioritet: 85, data: '2026-09-23', tid: 7012, vrazka: '#demo-intranet-7012', poleta: { tid: 7012 },
+      zaglavie: '#7012 „Приемо-предавателен протокол за ниво 6 — демо“', tekst: 'Техн. ръководителят (демо) я отбеляза за готова на 23.09 — чака твоето одобрение.', iztochnik: 'Интранет · #7012 · статус „Чака одобрение“' });
+    // решенията от дневника без отговор: Амур — над 3 → една карта; Скай — по карта [§4.7а]
+    function otv(t) { return !D.resheniq.some(function (r) { return r.tochka_id === t.id && CLOSE_VID[r.vid]; }) && !D.deistviq.some(function (a) { return a.tochka_id === t.id && CLOSES_DEI.indexOf(a.status) >= 0; }); }
+    function resh(o) { return D.tochki.filter(function (t) { var d = dDen(t.den_id); return t.grupa === 'reshenie' && d && d.obekt === o && d.data >= '2026-08-25' && otv(t); })
+      .sort(function (a, b) { return dDen(a.den_id).data < dDen(b.den_id).data ? -1 : 1; }); }
+    var ra = resh('ag'), rs = resh('soft');
+    if (ra.length > 3) C({ kluch: 'dn:ag', shablon: 'dnevnik', obekt: 'ag', agent: 'dnevnik', izvor_fajl: null, prioritet: 82, data: dDen(ra[0].den_id).data, zaglavie: 'Дневникът: ' + ra.length + ' решения чакат — Амур',
+      grupa: ra.map(function (t) { var d = dDen(t.den_id); return { podkluch: 'dn:' + t.id, tochka_id: t.id, den_id: t.den_id, data: d.data, obekt: 'ag', tekst: t.tekst, izvori: t.izvori }; }) });
+    rs.forEach(function (t) {
+      var d = dDen(t.den_id);
+      C({ kluch: 'dn:' + t.id, shablon: 'dnevnik', obekt: 'soft', agent: 'dnevnik', izvor_fajl: null, prioritet: 82, data: d.data, zaglavie: t.tekst, poleta: { tochka_id: t.id, den_id: t.den_id, k: t.k },
+        izvori: t.izvori, iztochnik: 'дневник Скай ' + ddmm(parseD(d.data)) + ' (tochki reshenie)',
+        grupa: d.data === '2026-09-22' ? [{ tekst: 'брифингът 08:54: още чака 2 дни', agent: 'brifing' }] : [] });
+    });
+    // ---- от брифинга ----
+    C({ kluch: 'd:ag:демо дневен ред 25.09.doc', obekt: 'ag', shablon: 'reshenie', prioritet: 80, vajnost: 3, zaglavie: 'Демо дневен ред 25.09.doc — 3 неща за решение',
+      tekst: 'Брифингът извади от дневния ред за оперативката утре три точки, които чакат твоето решение.', iztochnik: 'Брифинг 24.09 08:54 · Демо дневен ред 25.09.doc', grupa: [
+        { podkluch: 'a:brifing:ag:dnevenred-2509-1', tekst: 'Трафопостът — кой подава заявлението за присъединяване?', iztochnik: 'т. 2', vajnost: 3, agent: 'brifing' },
+        { podkluch: 'a:brifing:ag:dnevenred-2509-2', tekst: 'Графикът на фасадата на сграда 4 — приемаме ли новия срок 09.10?', iztochnik: 'т. 4', vajnost: 3, agent: 'brifing' },
+        { podkluch: 'a:brifing:ag:dnevenred-2509-3', tekst: 'Допълнителните количества кофраж — към кой акт?', iztochnik: 'т. 6', vajnost: 2, agent: 'brifing' }] });
+    C({ kluch: 't:soft:mostra', obekt: 'soft', shablon: 'reshenie', prioritet: 80, vajnost: 3, zaglavie: 'Мострата на фасадните панели за ниво 9 е на обекта — одобряваме ли я?',
+      tekst: 'Снабдяването потвърди, че мострата е на обекта от 23.09; архитектът чака решението, за да пусне поръчката.', poleta: { kandidat: 'Да се реши мострата на фасадните панели' },
+      grupa: [{ tekst: 'ailab: задачата #7011 в Интранета също е „Чака одобрение“', agent: 'brifing' }], iztochnik: 'Брифинг 24.09 08:54 · Съобщения Скай 23.09 15:40' });
+    var v1 = C({ kluch: 't:ag:vitrini', obekt: 'ag', shablon: 'reshenie', prioritet: 80, vajnost: 3, status: 'zatvorena', zaglavie: 'Витрините на партера: дръжките', obnovena: T(H + '12:10:00' + Z), sazdadena: T('2026-09-23T08:56:00' + Z) });
+    O({ karta_id: v1.id, kluch: v1.kluch, vid: 'popalni', danni: { reshenie: 'Дръжките — както в мострата.' }, kogda: T(H + '12:04:00' + Z), obraboteno: T(H + '12:10:00' + Z), rezultat: 'записано' });
+    C({ kluch: 't:ag:vitrini#v2', obekt: 'ag', shablon: 'reshenie', prioritet: 80, vajnost: 3, versiq: 2, zaglavie: 'Витрините на партера: конфигурация фикс–врата–фикс и заключване',
+      tekst: 'Доставчикът на витрините праща нова конфигурация — фикс–врата–фикс; пита как да е заключването (секретна брава или електромагнит).',
+      poleta: { kandidat: 'Да се реши заключването на витрините', predishen: { kogda: T(H + '12:04:00' + Z), tekst: 'Дръжките — както в мострата.' } }, iztochnik: 'Брифинг 24.09 17:30 · Съобщения Амур 24.09 16:52', sazdadena: T(H + '17:32:00' + Z) });
+    C({ kluch: 'g:brifing:reshenie:v2', obekt: 'obshto', shablon: 'reshenie', prioritet: 50, vajnost: 2, zaglavie: 'Още 2 за решение (брифинг)', iztochnik: 'Брифинг 24.09 08:54', grupa: [
+      { podkluch: 'a:brifing:ag:skele-vrashtane', obekt: 'ag', tekst: 'Амур: излишното скеле — връща ли се на доставчика този месец?', vajnost: 2, agent: 'brifing' },
+      { podkluch: 'a:brifing:soft:kontejneri', obekt: 'soft', tekst: 'Скай: втори контейнер за отпадъци — поръчваме ли?', vajnost: 2, agent: 'brifing' }] });
+    var zd = C({ kluch: 'a:brifing:ag:protokol-2509', obekt: 'ag', shablon: 'zadacha', prioritet: 70, vajnost: 3, zaglavie: 'Задача: протокол от оперативката 25.09 — да се изпрати на ТР до петък',
+      tekst: 'Брифингът предлага задача в Интранета за ТР.', iztochnik: 'Брифинг 24.09 08:54 · ailab' });
+    O({ karta_id: zd.id, kluch: zd.kluch, vid: 'otlozhi', danni: { do: T('2026-09-25T08:00:00' + Z) }, kogda: T(H + '09:10:00' + Z), obraboteno: T(H + '09:12:00' + Z), rezultat: 'записано' });
+    C({ kluch: 'a:brifing:soft:7011-komentar', vid: 'pusni', kanal: 'intranet_komentar', obekt: 'soft', tid: 7011, prioritet: 60, vrazka: '#demo-intranet-7011', izticha: T('2026-09-25T23:59:00' + Z),
+      zaglavie: 'Коментар към #7011 „Одобри мострата на фасадните панели за ниво 9“', tekst: 'Брифингът предлага коментар, за да се знае, че мострата е получена.',
+      tekst_navan: 'Демо — мострата е получена на обекта на 23.09; чакаме одобрението на архитекта.', iztochnik: 'Брифинг 24.09 08:54 · zadacha' });
+    C({ kluch: 'a:brifing:ag:7001-komentar', vid: 'pusni', kanal: 'intranet_komentar', obekt: 'ag', tid: 7001, prioritet: 60, vrazka: '#demo-intranet-7001', izticha: T('2026-09-23T23:59:00' + Z), status: 'izpusnata',
+      data: '2026-09-22', zaglavie: 'Коментар към #7001: графикът за фасадата е изпратен на инвеститора', tekst_navan: 'Демо — графикът за фасадата на сграда 4 е изпратен на инвеститора на 22.09.',
+      izvor_fajl: 'brifing/2026-09-22_0854.json', sazdadena: T('2026-09-22T08:56:00' + Z), obnovena: T(H + '00:10:00' + Z) });
+    C({ kluch: 'a:analiz:ag:kmd-vrati', obekt: 'ag', shablon: 'reshenie', agent: 'analiz', izvor_fajl: 'analiz/2026-09-21_0940.json', status: 'svita', data: '2026-09-21', prioritet: 80, vajnost: 3,
+      zaglavie: 'КМД на металните врати — кой го прави?', spomenata: T('2026-09-21T09:40:00' + Z), sazdadena: T('2026-09-21T09:42:00' + Z), obnovena: T(H + '07:05:00' + Z), iztochnik: 'Анализ 14.09–20.09' });
+    var st0 = C({ kluch: 'a:brifing:ag:kontejner-staro', obekt: 'ag', shablon: 'reshenie', status: 'zatvorena', data: '2026-09-23', zaglavie: 'Демо: първият контейнер — да се смени ли фирмата?', obnovena: T('2026-09-23T19:00:00' + Z) });
+    O({ karta_id: st0.id, kluch: st0.kluch, vid: 'ne', kogda: T('2026-09-23T18:40:00' + Z), obraboteno: T('2026-09-23T18:45:00' + Z), rezultat: 'записано' });
+    O({ karta_id: st0.id, kluch: st0.kluch, vid: 'zashto', tekst: 'Вече е направено', kogda: T('2026-09-23T18:41:00' + Z), obraboteno: T('2026-09-23T18:45:00' + Z) });
+    // ---- от другите агенти ----
+    C({ kluch: 'a:operativki:ag:nadzor-ogled', vid: 'pusni', kanal: 'mail', obekt: 'ag', agent: 'operativki', izvor_fajl: 'operativki/2026-09-24_1305.json', vajnost: 3, prioritet: 75, izticha: T('2026-09-25T23:59:00' + Z),
+      zaglavie: 'Надзорът: огледът на армировката +9,30 — има ли потвърден час?', tekst: 'Вътрешно (само в AiLab): на оперативката стана ясно, че без огледа армировката не може да се затвори.',
+      tekst_navan: 'Здравейте,\n\nВъв връзка с „огледа на армировката на плоча +9,30“ — има ли развитие? Ако има документ или нов срок — моля, изпратете ги.\n\nБлагодаря!',
+      izvori: [{ n: 1, tip: 'Мейл', kratko: 'надзорът · потвърждение на огледа', vreme: '21:40', kade: 'Оригинали/2026-09-23_184000_mail.txt', den: '2026-09-23' }],
+      poleta: { adresati: [{ adres: 'nadzor@primer.test', ime: 'Demo Nadzor' }], tema: 'Оглед на армировката +9,30 — има ли развитие?' }, iztochnik: 'Съобщения.md Амур 23.09, 21:40', otgovornik: 'Demo Nadzor' });
+    C({ kluch: 'a:operativki:obshto:protokol-2309', vid: 'izberi', obekt: 'obshto', agent: 'operativki', izvor_fajl: 'operativki/2026-09-24_1305.json', prioritet: 60, data: '2026-09-23',
+      zaglavie: 'Протокол от вътрешната оперативка 23.09 — за кой обект е?', tekst: 'Файлът е в общата папка за оперативки; в текста има точки и за двата обекта.', iztochnik: 'Демо папка оперативки / Протокол 23.09.docx',
+      izbori: [{ k: 'ag', ime: 'Амур' }, { k: 'soft', ime: 'Скай' }, { k: 'oba', ime: 'И двата' }] });
+    C({ kluch: 'a:prisystvia:soft:sverka-2409', vid: 'izberi', obekt: 'soft', agent: 'prisystvia', izvor_fajl: 'prisystvia/2026-09-24_1000.json', prioritet: 60, zaglavie: 'Хората на Скай 24.09 — кое е вярното?',
+      tekst: 'Присъствия: 41 души (въведено 09:35).', poleta: { sreshta: 'Дневникът: 38 (по сутрешния отчет в чата)' }, otgovornik: 'ТР на обекта', iztochnik: 'Присъствия 24.09 09:35 · чат Скай 07:40',
+      izbori: [{ k: '1', ime: 'Вярно е първото' }, { k: '2', ime: 'Вярно е второто' }, { k: 'dvete', ime: 'И двете са наред' }] });
+    C({ kluch: 'izb:papka:Демо сървър / 05 Оферти', vid: 'izberi', obekt: 'ag', agent: 'sarvar', izvor_fajl: 'sarvar/2026-09-24_1030.json', prioritet: 60, zaglavie: 'Да спра ли да показвам новото от „Демо сървър / 05 Оферти“?',
+      tekst: 'Два пъти отбеляза файл оттук „Само за сведение“.', poleta: { papka: 'Демо сървър / 05 Оферти' }, izbori: [{ k: 'da', ime: 'Да, спри' }, { k: 'ne', ime: 'Не' }] });
+    var pr0 = C({ kluch: 'izb:papka:Демо сървър / 07 Снимки', vid: 'izberi', obekt: 'ag', agent: 'sarvar', status: 'zatvorena', data: '2026-09-22', prioritet: 60, zaglavie: 'Да спра ли да показвам новото от „Демо сървър / 07 Снимки“?',
+      poleta: { papka: 'Демо сървър / 07 Снимки' }, izbori: [{ k: 'da', ime: 'Да, спри' }, { k: 'ne', ime: 'Не' }], obnovena: T('2026-09-22T18:15:00' + Z) });
+    O({ karta_id: pr0.id, kluch: pr0.kluch, vid: 'izbor', tekst: 'da', kogda: T('2026-09-22T18:10:00' + Z), obraboteno: T('2026-09-22T18:15:00' + Z), rezultat: 'изборът е запомнен' });
+    // „↳“ с sigurno:false — Амур 24.09, k 5 → въпрос в Преглед и карта „Избери“ [§6.5]
+    var t5 = P(ag24, 5);
+    if (t5 && t5.prodalzhenie) {
+      t5.prodalzhenie = Object.assign({}, t5.prodalzhenie, { sigurno: false });
+      C({ kluch: 'prd:' + t5.id, vid: 'izberi', obekt: 'ag', agent: 'dnevnik', izvor_fajl: null, prioritet: 60, zaglavie: '↳ Продължение ли е? „' + clip(t5.tekst, 70) + '“',
+        tekst: 'Може би продължава: 22.09 „Демо: поръчка армировка (Тиймс чат · Demo Snab · 09:12)“.', poleta: { tochka_id: t5.id, den_id: ag24.id, k: 5 },
+        izbori: [{ k: 'da', ime: 'Да, продължение е' }, { k: 'ne', ime: 'Не е' }] });
+    }
+    C({ kluch: 'napomni:2026-09-21', vid: 'napomni', obekt: 'obshto', agent: 'intranet_db', izvor_fajl: null, prioritet: 45, data: '2026-09-21', zaglavie: 'Напомни на 3 души — 3 просрочени задачи от теб', grupa: [
+      { podkluch: 'napomni:' + skel(DS3.TR), ime: DS3.TR, tekst: DS3.TR + ' · 1 просрочена (най-старата 6 дни)', adresi: ['demo.tehnik@primer.test'], broi: 1, zadachi: [{ tid: 7030, opis: 'Снимки на фасадата на сграда 3 (демо)', srok: '2026-09-18' }] },
+      { podkluch: 'napomni:' + skel(DS3.MEH), ime: DS3.MEH, tekst: DS3.MEH + ' · 1 просрочена (най-старата 4 дни)', adresi: ['mehanik@primer.test'], broi: 1, zadachi: [{ tid: 7013, opis: 'Заяви технически преглед на кулокран 2', srok: '2026-09-20' }] },
+      { podkluch: 'napomni:' + skel(DS3.BK), ime: DS3.BK, tekst: DS3.BK + ' · 1 просрочена (най-старата 7 дни)', broi: 1, zadachi: [{ tid: 7031, opis: 'Заявка за кофражни платна (демо)', srok: '2026-09-17' }] }] });
+    var tp = P(ag22, 1);
+    if (tp) C({ kluch: 'proveri:2026-W39', vid: 'proveri', obekt: 'ag', agent: 'dnevnik', izvor_fajl: null, prioritet: 40, data: '2026-09-22', zaglavie: 'Провери ме: вярно ли е записано?',
+      tekst: 'Амур 22.09 · „' + tp.tekst + '“', poleta: { tochka_id: tp.id, den_id: ag22.id, k: 1 }, iztochnik: 'Случайна точка от вписаните дни на седмицата' });
+    // ---- редовете на сутрешния лист ----
+    R('brifing', { kluch: 'red:brifing:2026-09-24_0854', agent: 'brifing', izvor_fajl: 'brifing/2026-09-24_0854.json', zaglavie: 'Брифинг 08:54', poleta: { izbroqva: 6, tuk: 4, chas: '08:54' },
+      tekst: 'Демо резюме: Амур — кофражът на +9,30 е до ос 7, армировката започва утре; арматурата закъснява с 5–10 дни. Скай — сутеренът се отводнява, фасадата на ниво 9 чака мострата. Трафопостът и витрините чакат решение.' });
+    R('chakat_men', { kluch: 'otg:demo-chat-tehnik', obekt: 'ag', zaglavie: 'Тиймс · чат с Demo Tehnik · Demo Tehnik 16:20: „Може ли да потвърдиш часа за огледа утре?“', poleta: { kanal: 'chat', avtor: 'Demo Tehnik' }, obnovena: T(H + '16:25:00' + Z) });
+    R('chakat_men', { kluch: 'otg:demo-kanal-tr', obekt: 'soft', zaglavie: 'Тиймс · канал на обекта · ТР на обекта 14:05: „↳ отговор на теб — отворът на ос 8 чака твоето решение“', poleta: { kanal: 'kanal', avtor: 'ТР на обекта' }, obnovena: T(H + '14:10:00' + Z) });
+    R('chakat_men', { kluch: 'otg:demo-mail-snab', obekt: 'ag', zaglavie: '✉ snab@primer.test · „Доставка на клинкер — потвърждавате ли датата?“ · 23.09 09:12',
+      poleta: { kanal: 'mail', adres: 'snab@primer.test', avtor: 'Demo Snab', tema: 'Доставка на клинкер — потвърждавате ли датата?' }, obnovena: T('2026-09-23T09:20:00' + Z) });
+    R('chakam', { kluch: 'red:chakam:tehnik', zaglavie: DS3.TR + ' — 1 просрочена (най-старата 6 дни)', poleta: { ime: DS3.TR, broi: 1, dni: 6, adres: 'demo.tehnik@primer.test' } });
+    R('chakam', { kluch: 'red:chakam:mehanik', zaglavie: DS3.MEH + ' — 1 просрочена (най-старата 4 дни)', poleta: { ime: DS3.MEH, broi: 1, dni: 4, adres: 'mehanik@primer.test' } });
+    [['Демо фактура 101.pdf', 'ag', 'Демо фактура 101 — кофраж, поредният акт · Демо сървър / 03 Фактури', 3], ['Демо писмо надзор.docx', 'ag', 'Писмо на надзора — огледът на армировката е след ос 4', 2],
+      ['Демо план +9,30.dwg', 'ag', 'Нова ревизия на плана на плоча +9,30 · Демо сървър / 02 Чертежи', 2], ['Демо оферта.xlsx', 'soft', 'Оферта за окачената фасада — ниво 10 · Демо сървър / 05 Оферти', 2]].forEach(function (x, i) {
+      R('novo', { kluch: 'red:novo:a:sarvar:' + x[1] + ':demo-' + i, obekt: x[1], agent: 'sarvar', izvor_fajl: 'sarvar/2026-09-24_1030.json', zaglavie: x[0], tekst: x[2], vajnost: x[3] });
+    });
+    R('sledq', { kluch: 'red:sledq:a:sarvar:soft:kran2', obekt: 'soft', agent: 'sarvar', vajnost: 1, zaglavie: 'Скай: техническият преглед на кулокран 2 изтича на 30.09', izvor_fajl: 'sarvar/2026-09-24_1030.json' });
+    R('sledq', { kluch: 'red:sledq:a:brifing:ag:asansori', obekt: 'ag', agent: 'brifing', vajnost: 1, zaglavie: 'Амур: брифингът помни — графикът на асансьорите (инвеститорът пита пак)' });
+    R('temi', { kluch: 'red:temi:2026-09-24', agent: 'temi', zaglavie: 'Теми за оперативката: 12', poleta: { broi: 12, generirano: T(H + '08:31:00' + Z) } });
+    R('vreme', { kluch: 'red:vreme:ag', obekt: 'ag', zaglavie: 'Днес: слънчево, 14…29 °C, без валеж, вятър до 4 м/с' });
+    R('vreme', { kluch: 'red:vreme:soft', obekt: 'soft', zaglavie: 'Днес: облачно, 13…24 °C, слаб дъжд следобед, вятър до 6 м/с' });
+    R('pdf', { kluch: 'red:pdf:2026-09-24', zaglavie: 'Брифинг 08:54 · Сървър 10:38 · Оперативки 13:05 · Интранет 08:24', tekst: 'БРИФИНГ.pdf (08:56) · СВОДКА.pdf (08:58) — на лаптопа' });
+    // „Какво излезе“: едно писмо, пратено от РП през „✉“ и отбелязано „✓ Пратих го“ (rp_sam)
+    var pt = O({ kluch: 'pitai:demo1', vid: 'pratih', ustroistvo: 'iPhone · иконка · ✉', kogda: T('2026-09-15T10:06:00' + Z), obraboteno: T('2026-09-15T10:10:00' + Z), rezultat: 'пратено от теб — в „Какво излезе“',
+      danni: { kanal: 'mail', adresati: ['snab@primer.test'], tema: 'Въпрос: Клинкерът за сграда 4 — дата на доставката (Амур Гардънс, 15.09.2026)', tekst: 'Здравейте,\n\nКлинкерът за сграда 4 — има ли потвърдена дата на доставката?\n\nБлагодаря!' } });
+    D.izhod_log.push({ id: ++D.seq, kogda: pt.kogda, kanal: 'mail', nachin: 'rp_sam', obekt: 'ag', do_kogo: 'snab@primer.test', tema: pt.danni.tema, tekst: pt.danni.tekst, vrazka: null, karta_kluch: pt.kluch, otgovor_id: pt.id, deistvie_id: null, rezultat: 'пратено от теб' });
+    // мерилото „в 23:30“ (лаптопът): пн–ср; чт — още не е мерено
+    [['2026-09-21', 2], ['2026-09-22', 0], ['2026-09-23', 1]].forEach(function (x) { D.metriki.push({ id: ++D.seq, vid: 'chaka_2330', stoinost: x[1], den_id: null, kogda: T(x[0] + 'T23:30:00' + Z) }); });
+    // „Хора и фирми“: едно име на кирилица и латиница („й“/„y“), безплатна поща (poshta.test) без фирма
+    D.hora_extra = [{ izvor: 'poshta', ime: 'Demo Yordanov', adres: 'yordanov@primer.test', firma: 'primer.test', grupa: null, broi: 12, posledno: T('2026-09-23T10:00:00' + Z) },
+      { izvor: 'intranet', ime: 'Демо Йорданов', adres: null, firma: null, grupa: 'Снабдяване (демо)' },
+      { izvor: 'poshta', ime: 'Demo Majstor', adres: 'majstor@poshta.test', firma: 'poshta.test', grupa: null, broi: 3, posledno: T('2026-09-22T15:00:00' + Z) }];
+    var n0 = D.chaka_karti.filter(function (c) { return c.vid !== 'red' && c.status === 'aktivna' && !(c.vid === 'pusni' && c.kanal !== 'mail'); }).length - 1;
+    D.svezhest.push({ izvor: 'chaka', posledno: T(H + '08:56:00' + Z), ok: true, broi: n0, belejka: 'Чака теб: ' + n0 + ' · лист 08:56 · агенти: 4 бележки' });
+  }
+  // демо „кешът от предишното отваряне“ — за решението на таба при старт (Р1)
+  function demoChakaSnap() {
+    return JSON.parse(JSON.stringify({ v: 1, at: dT('2026-09-24T17:30:00+03:00'), st: 'ok', live: true, izSt: { spran: false, ot: null },
+      karti: D.chaka_karti.filter(function (c) { return c.vid !== 'red'; }), redove: D.chaka_karti.filter(function (c) { return c.vid === 'red'; }), otg: D.chaka_otgovori }));
+  }
+  function demoS3Paint() { setTimeout(function () { loadChaka(true); demoSvRefresh(); if (sheetKind === 'demo') openDemoSheet(); }, 50); }
+  function demoS3Star(el) {
+    D.s3Star = !D.s3Star;
+    D.svezhest.forEach(function (s) { if (s.izvor === 'chaka') s.posledno = dT(D.s3Star ? '2026-09-23T22:41:00+03:00' : '2026-09-24T08:56:00+03:00'); });
+    if (el) { el.setAttribute('aria-pressed', String(D.s3Star)); el.textContent = '☀️ Листът е стар — ' + (D.s3Star ? 'вкл.' : 'изкл.'); }
+    toast(D.s3Star ? 'Демо: лаптопът е събирал „Чака теб“ последно вчера 22:41' : 'Демо: „Чака теб“ е събран днес 08:56');
+    demoS3Paint();
+  }
+  function demoS3Novi() {
+    var T = dT, n = nowIso();
+    function C(o) { D.chaka_karti.push(Object.assign({ id: ++D.seq, kanal: null, shablon: null, razdel: null, tekst: null, tekst_navan: null, izbori: null, poleta: null, grupa: null, izvori: null, iztochnik: null, vrazka: null, tid: null,
+      agent: 'brifing', izvor_fajl: 'brifing/2026-09-24_1745.json', otgovornik: null, data: '2026-09-24', vajnost: 3, prioritet: 80, izticha: null, spomenata: n, versiq: 1, status: 'aktivna', hesh: null, sazdadena: n, obnovena: n }, o)); }
+    C({ kluch: 'a:brifing:ag:pompa-0210', vid: 'popalni', shablon: 'reshenie', obekt: 'ag', zaglavie: 'Помпата за бетона на 02.10 — потвърждаваме ли резервацията?', poleta: { kandidat: 'Да се потвърди или отложи помпата' }, iztochnik: 'Брифинг 24.09 17:45' });
+    C({ kluch: 'a:prisystvia:ag:sverka-2409', vid: 'izberi', obekt: 'ag', agent: 'prisystvia', prioritet: 60, vajnost: 2, zaglavie: 'Хората на Амур 24.09 — кое е вярното?', tekst: 'Присъствия: 50 души.', poleta: { sreshta: 'Чатът: 52 (сутрешният отчет)' },
+      izbori: [{ k: '1', ime: 'Вярно е първото' }, { k: '2', ime: 'Вярно е второто' }, { k: 'dvete', ime: 'И двете са наред' }] });
+    D.chaka_karti.forEach(function (c) { if (c.kluch === 'g:brifing:reshenie:v2' && c.status === 'aktivna') { c.status = 'svita'; c.obnovena = n; } });
+    D.chaka_karti.push({ id: ++D.seq, kluch: 'red:brifing:2026-09-24_1745', vid: 'red', razdel: 'brifing', obekt: 'obshto', agent: 'brifing', zaglavie: 'Брифинг 17:45', tekst: 'Демо: вечерният брифинг добави помпата за 02.10 и сверката на хората в Амур.',
+      poleta: { izbroqva: 7, chas: '17:45' }, prioritet: 0, status: 'aktivna', sazdadena: n, obnovena: n });
+    D.svezhest.forEach(function (s) { if (s.izvor === 'chaka') { s.posledno = n; s.belejka = 'Чака теб: +2 · брифинг 17:45'; } });
+    toast('Демо: лаптопът качи 2 нови карти и свили 1 („агентите вече не я споменават“)');
+    demoS3Paint();
+  }
+  function demoS3Pet() {
+    var n = nowIso(), L = [['ag', 'Демо: кой подписва акта за скрити работи на +9,30?'], ['soft', 'Демо: окачената фасада — второ мнение за анкерите?'], ['ag', 'Демо: охраната през уикенда — нощна смяна ли?'],
+      ['soft', 'Демо: асансьорът — монтаж преди или след фасадата?'], ['ag', 'Демо: остатъчната армировка — връщаме ли я?']];
+    L.forEach(function (x, i) {
+      D.s3n = (D.s3n || 0) + 1;
+      D.chaka_karti.push({ id: ++D.seq, kluch: 'a:analiz:' + x[0] + ':demo-' + D.s3n, vid: 'popalni', kanal: null, shablon: 'reshenie', razdel: null, obekt: x[0], zaglavie: x[1], tekst: null, tekst_navan: null, izbori: null,
+        poleta: null, grupa: null, izvori: null, iztochnik: 'Анализ 14.09–20.09 (демо)', vrazka: null, tid: null, agent: 'analiz', izvor_fajl: 'analiz/2026-09-21_0940.json', otgovornik: null, data: '2026-09-2' + (i % 3),
+        vajnost: 3, prioritet: 80, izticha: null, spomenata: n, versiq: 1, status: 'aktivna', hesh: null, sazdadena: n, obnovena: n });
+    });
+    toast('Демо: +5 карти (таванът е 12 — останалите чакат място)');
+    demoS3Paint();
+  }
+  function demoS3Den() {
+    DEMO_SHIFT += 864e5;
+    toast('Демо: мина един ден — ' + exactShort(now()));
+    demoS3Paint(); renderCurrent(); setTimeout(function () { loadTablo(true); }, 80);
+  }
+  function demoS3Izhod() {
+    var l = D.chaka_otgovori.filter(function (r) { return r.vid === 'spri_izhod' || r.vid === 'pusni_izhod'; }).sort(function (a, b) { return a.id - b.id; }), sp = l.length && l[l.length - 1].vid === 'spri_izhod';
+    D.chaka_otgovori.push({ id: ++D.seq, karta_id: null, kluch: 'izhod', podkluch: null, vid: sp ? 'pusni_izhod' : 'spri_izhod', tekst: null, danni: null, ustroistvo: 'демо · друг телефон', klient_id: null, kogda: nowIso(), obraboteno: nowIso(), rezultat: null });
+    toast(sp ? 'Демо: изходящото е пуснато (от друг телефон)' : 'Демо: изходящото е спряно (от друг телефон)');
+    demoS3Paint();
+  }
+  function demoS3No(el) {
+    D.s3No = !D.s3No;
+    if (el) { el.setAttribute('aria-pressed', String(D.s3No)); el.textContent = '🚫 Без 011 — ' + (D.s3No ? 'вкл.' : 'изкл.'); }
+    chReset(); if (D.s3No) CH.inited = true;
+    toast(D.s3No ? 'Демо: таблиците на Стъпка 3 ги няма — както преди 011 (Табло както досега)' : 'Демо: таблиците на Стъпка 3 пак има');
+    demoS3Paint(); setTimeout(function () { renderCurrent(); if (view === 'tablo') { renderOpen(true); renderTabloCounts(); } }, 400);
   }
   // ---- Етап 5 (§6.5): Присъствия, Интранетът, „📘/🚫“ — всичко измислено ----
   function demoE5(k23) {
@@ -8491,7 +10351,8 @@
       Z(6990, 'Подпиши протокола за приемане на армировката на стълбището', 'ag', TI, TI, '2026-09-22', 'Текуща', { sazdadena: T('2026-09-18T21:04:00+03:00') }),
       Z(7010, 'Прегледай количествената сметка за поредния акт по кофража', 'ag', TI, 'Сметчик (демо)', '2026-09-25', 'Текуща', { prioritet: 'high' }),
       Z(7011, 'Одобри мострата на фасадните панели за ниво 9', 'soft', TI, PTO, '2026-09-21', 'Чака одобрение', { komentari: 3 }),
-      Z(7012, 'Месечен отчет за безопасността — септември', null, TI, 'Интранет', '2026-09-30', 'Текуща'),
+      // Стъпка 3 [§6.9]: #7012 — „от мен“, чака МОЕТО одобрение (картата „Одобри в Интранета“)
+      Z(7012, 'Приемо-предавателен протокол за ниво 6 — демо', 'soft', TR, TI, '2026-09-23', 'Чака одобрение', { komentari: 2 }),
       Z(7013, 'Заяви технически преглед на кулокран 2', 'soft', 'Механизатор (демо)', TI, '2026-09-20', 'Текуща', { prioritet: 'urgent', kontrolni: '1/2' }),
       Z(7014, 'Уточни графика на анкерите за окачената фасада', 'soft', TR, TI, '2026-09-29', 'Стартирала'),
       Z(7015, 'Поръчай втори контейнер за отпадъци за сгради 2 и 3', 'ag', 'Бригадир кофраж (демо)', TI, '2026-09-29', 'Мониторинг'),
@@ -8506,7 +10367,12 @@
       Z(7024, 'Списък на липсите по фасадата на сграда 3', 'ag', 'Бригадир фасада (демо)', TR, '2026-10-05', 'Текуща', { v_ekipa: true, ekip: [TI] }),
       Z(7025, 'Седмична оперативка — протокол', null, TI, TI, null, 'Текуща'),
       Z(7026, 'Доставка на стъклопакети за ниво 7', 'soft', PTO, TI, '2026-10-01', 'Мониторинг'),
-      Z(7027, 'Предай екзекутивите на ВиК за сграда 1', 'ag', 'Инж. ВиК (демо)', TI, '2026-10-08', 'Текуща', { komentari: 2, kontrolni: '1/3' })
+      Z(7027, 'Предай екзекутивите на ВиК за сграда 1', 'ag', 'Инж. ВиК (демо)', TI, '2026-10-08', 'Текуща', { komentari: 2, kontrolni: '1/3' }),
+      // Стъпка 3 [§6.9]: П1 (на мен: днес, просрочена — „нова“ от днес) и „Напомняния“ (от мен, просрочени — трима души)
+      Z(7028, 'Протокол от оперативката — коментарите към ТР (демо)', 'ag', TI, TR, '2026-09-24', 'Текуща', { vidqna_parvo: T('2026-09-24T08:24:00+03:00'), sazdadena: T('2026-09-24T08:10:00+03:00') }),
+      Z(7029, 'Справка за отпадъците — септември (демо)', 'soft', TI, 'Интранет', '2026-09-19', 'Текуща'),
+      Z(7030, 'Снимки на фасадата на сграда 3 (демо)', 'ag', TR, TI, '2026-09-18', 'Текуща'),
+      Z(7031, 'Заявка за кофражни платна (демо)', 'ag', 'Бригадир кофраж (демо)', TI, '2026-09-17', 'Текуща')
     ];
   }
   // демо панел: „таблицата липсва“ (поведението преди 008) и „дълга история“ (страници [К4])
@@ -8755,11 +10621,11 @@
       });
       return;
     }
-    if (view === 'tablo' || view === 'day' || view === 'deistviq') flush().then(function () { refreshCurrent(); });
+    if (view === 'tablo' || view === 'day' || view === 'deistviq' || view === 'chaka') flush().then(function () { refreshCurrent(); });
     else if (view === 'karti' && user) loadKarti();
   });
   window.addEventListener('offline', function () {
-    if (view === 'tablo' || view === 'day' || view === 'deistviq') setOffline();
+    if (view === 'tablo' || view === 'day' || view === 'deistviq' || view === 'chaka') setOffline();
     else if (view === 'karti') { var c = readCache(); stamp('без покритие' + (c ? ' · ' + c.at : ''), true); }
   });
   if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js').catch(function () {}); }
